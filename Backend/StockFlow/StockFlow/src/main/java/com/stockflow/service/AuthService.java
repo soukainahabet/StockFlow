@@ -28,13 +28,25 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
 
+    private static final String DEFAULT_ROLE = "SELLER";
+    private static final java.util.Set<String> ASSIGNABLE_ROLES =
+            java.util.Set.of("ADMIN", "STOCK_MANAGER", "SELLER", "MANAGER");
+
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new DuplicateResourceException("User", "email", request.getEmail());
         }
 
-        String roleName = request.getRoleName() != null ? request.getRoleName() : "USER";
+        String roleName = (request.getRoleName() == null || request.getRoleName().isBlank())
+                ? DEFAULT_ROLE
+                : request.getRoleName().toUpperCase();
+
+        if (!ASSIGNABLE_ROLES.contains(roleName)) {
+            throw new BadRequestException(
+                    "Invalid role '" + roleName + "'. Allowed: " + ASSIGNABLE_ROLES);
+        }
+
         Role role = roleRepository.findByName(roleName)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", "name", roleName));
 

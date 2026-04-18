@@ -2,6 +2,7 @@ package com.stockflow.service;
 
 import com.stockflow.dto.request.LigneVenteRequest;
 import com.stockflow.dto.request.VenteRequest;
+import com.stockflow.dto.response.PageResponse;
 import com.stockflow.dto.response.VenteResponse;
 import com.stockflow.exception.InsufficientStockException;
 import com.stockflow.exception.ResourceNotFoundException;
@@ -12,6 +13,9 @@ import com.stockflow.repository.UserRepository;
 import com.stockflow.repository.VenteRepository;
 import com.stockflow.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -20,10 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class VenteService {
 
     private final VenteRepository venteRepository;
@@ -31,16 +35,26 @@ public class VenteService {
     private final UserRepository userRepository;
     private final StockMovementRepository stockMovementRepository;
 
-    public List<VenteResponse> getAllVentes() {
-        return venteRepository.findAllByOrderByDateDesc().stream()
-                .map(VenteResponse::fromEntity)
-                .collect(Collectors.toList());
+    public PageResponse<VenteResponse> search(Long userId,
+                                              LocalDateTime startDate,
+                                              LocalDateTime endDate,
+                                              BigDecimal minTotal,
+                                              BigDecimal maxTotal,
+                                              Pageable pageable) {
+        Page<Vente> page = venteRepository.search(userId, startDate, endDate, minTotal, maxTotal, pageable);
+        return PageResponse.from(page, VenteResponse::fromEntity);
     }
 
     public VenteResponse getVenteById(Long id) {
         Vente vente = venteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Vente", "id", id));
         return VenteResponse.fromEntity(vente);
+    }
+
+    public List<VenteResponse> getRecentVentes(int limit) {
+        return venteRepository.findRecentVentes(PageRequest.of(0, limit)).stream()
+                .map(VenteResponse::fromEntity)
+                .toList();
     }
 
     @Transactional
@@ -97,6 +111,14 @@ public class VenteService {
         Vente savedVente = venteRepository.save(vente);
 
         return VenteResponse.fromEntity(savedVente);
+    }
+
+    @Transactional
+    public void deleteVente(Long id) {
+        if (!venteRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Vente", "id", id);
+        }
+        venteRepository.deleteById(id);
     }
 
     private User getCurrentUser() {

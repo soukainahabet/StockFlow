@@ -1,7 +1,9 @@
 package com.stockflow.service;
 
 import com.stockflow.dto.request.UserUpdateRequest;
+import com.stockflow.dto.response.PageResponse;
 import com.stockflow.dto.response.UserResponse;
+import com.stockflow.exception.BadRequestException;
 import com.stockflow.exception.DuplicateResourceException;
 import com.stockflow.exception.ResourceNotFoundException;
 import com.stockflow.model.Role;
@@ -9,25 +11,35 @@ import com.stockflow.model.User;
 import com.stockflow.repository.RoleRepository;
 import com.stockflow.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class UserService {
+
+    private static final Set<String> ASSIGNABLE_ROLES =
+            Set.of("ADMIN", "STOCK_MANAGER", "SELLER", "MANAGER");
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public List<UserResponse> getAllUsers() {
-        return userRepository.findAll().stream()
-                .map(UserResponse::fromEntity)
-                .collect(Collectors.toList());
+    public PageResponse<UserResponse> getAllUsers(String search, Pageable pageable) {
+        Page<User> page;
+        if (search == null || search.isBlank()) {
+            page = userRepository.findAll(pageable);
+        } else {
+            String term = search.trim();
+            page = userRepository.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(term, term, pageable);
+        }
+        return PageResponse.from(page, UserResponse::fromEntity);
     }
 
     public UserResponse getUserById(Long id) {
@@ -63,8 +75,13 @@ public class UserService {
         }
 
         if (request.getRoleName() != null) {
-            Role role = roleRepository.findByName(request.getRoleName())
-                    .orElseThrow(() -> new ResourceNotFoundException("Role", "name", request.getRoleName()));
+            String roleName = request.getRoleName().toUpperCase();
+            if (!ASSIGNABLE_ROLES.contains(roleName)) {
+                throw new BadRequestException(
+                        "Invalid role '" + roleName + "'. Allowed: " + ASSIGNABLE_ROLES);
+            }
+            Role role = roleRepository.findByName(roleName)
+                    .orElseThrow(() -> new ResourceNotFoundException("Role", "name", roleName));
             user.setRole(role);
         }
 

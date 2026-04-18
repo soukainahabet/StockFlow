@@ -10,10 +10,23 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class DataInitializer implements CommandLineRunner {
+
+    public static final String ROLE_ADMIN = "ADMIN";
+    public static final String ROLE_STOCK_MANAGER = "STOCK_MANAGER";
+    public static final String ROLE_SELLER = "SELLER";
+    public static final String ROLE_MANAGER = "MANAGER";
+    /** Kept for backwards compatibility with existing data — new users should not be assigned USER. */
+    public static final String ROLE_USER = "USER";
+
+    public static final List<String> ALL_ROLES = List.of(
+            ROLE_ADMIN, ROLE_STOCK_MANAGER, ROLE_SELLER, ROLE_MANAGER, ROLE_USER
+    );
 
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
@@ -22,37 +35,38 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         initRoles();
-        initAdminUser();
+        initDefaultUsers();
     }
 
     private void initRoles() {
-        if (!roleRepository.existsByName("ADMIN")) {
-            Role adminRole = Role.builder().name("ADMIN").build();
-            roleRepository.save(adminRole);
-            log.info("Created ADMIN role");
-        }
-
-        if (!roleRepository.existsByName("USER")) {
-            Role userRole = Role.builder().name("USER").build();
-            roleRepository.save(userRole);
-            log.info("Created USER role");
-        }
+        ALL_ROLES.forEach(name -> {
+            if (!roleRepository.existsByName(name)) {
+                roleRepository.save(Role.builder().name(name).build());
+                log.info("Created role {}", name);
+            }
+        });
     }
 
-    private void initAdminUser() {
-        if (!userRepository.existsByEmail("admin@stockflow.com")) {
-            Role adminRole = roleRepository.findByName("ADMIN")
-                    .orElseThrow(() -> new RuntimeException("Admin role not found"));
+    private void initDefaultUsers() {
+        createUserIfMissing("Administrator", "admin@stockflow.com", "admin123", ROLE_ADMIN);
+        createUserIfMissing("Stock Manager", "stock@stockflow.com", "stock123", ROLE_STOCK_MANAGER);
+        createUserIfMissing("Seller",        "seller@stockflow.com", "seller123", ROLE_SELLER);
+        createUserIfMissing("Manager",       "manager@stockflow.com", "manager123", ROLE_MANAGER);
+    }
 
-            User admin = User.builder()
-                    .name("Administrator")
-                    .email("admin@stockflow.com")
-                    .password(passwordEncoder.encode("admin123"))
-                    .role(adminRole)
-                    .build();
-
-            userRepository.save(admin);
-            log.info("Created default admin user: admin@stockflow.com / admin123");
+    private void createUserIfMissing(String name, String email, String rawPassword, String roleName) {
+        if (userRepository.existsByEmail(email)) {
+            return;
         }
+        Role role = roleRepository.findByName(roleName)
+                .orElseThrow(() -> new IllegalStateException("Role not found: " + roleName));
+
+        userRepository.save(User.builder()
+                .name(name)
+                .email(email)
+                .password(passwordEncoder.encode(rawPassword))
+                .role(role)
+                .build());
+        log.info("Created default user: {} / {} [{}]", email, rawPassword, roleName);
     }
 }

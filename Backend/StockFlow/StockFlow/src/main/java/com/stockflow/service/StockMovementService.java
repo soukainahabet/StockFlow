@@ -1,6 +1,7 @@
 package com.stockflow.service;
 
 import com.stockflow.dto.request.StockMovementRequest;
+import com.stockflow.dto.response.PageResponse;
 import com.stockflow.dto.response.StockMovementResponse;
 import com.stockflow.exception.InsufficientStockException;
 import com.stockflow.exception.ResourceNotFoundException;
@@ -13,27 +14,32 @@ import com.stockflow.repository.StockMovementRepository;
 import com.stockflow.repository.UserRepository;
 import com.stockflow.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class StockMovementService {
 
     private final StockMovementRepository stockMovementRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
 
-    public List<StockMovementResponse> getAllMovements() {
-        return stockMovementRepository.findAllByOrderByDateDesc().stream()
-                .map(StockMovementResponse::fromEntity)
-                .collect(Collectors.toList());
+    public PageResponse<StockMovementResponse> search(Long productId,
+                                                      Long userId,
+                                                      StockMovementType type,
+                                                      LocalDateTime startDate,
+                                                      LocalDateTime endDate,
+                                                      Pageable pageable) {
+        Page<StockMovement> page = stockMovementRepository.search(productId, userId, type, startDate, endDate, pageable);
+        return PageResponse.from(page, StockMovementResponse::fromEntity);
     }
 
     public StockMovementResponse getMovementById(Long id) {
@@ -42,10 +48,12 @@ public class StockMovementService {
         return StockMovementResponse.fromEntity(movement);
     }
 
-    public List<StockMovementResponse> getMovementsByProduct(Long productId) {
-        return stockMovementRepository.findByProductId(productId).stream()
-                .map(StockMovementResponse::fromEntity)
-                .collect(Collectors.toList());
+    public PageResponse<StockMovementResponse> getMovementsByProduct(Long productId, Pageable pageable) {
+        if (!productRepository.existsById(productId)) {
+            throw new ResourceNotFoundException("Product", "id", productId);
+        }
+        Page<StockMovement> page = stockMovementRepository.findByProductId(productId, pageable);
+        return PageResponse.from(page, StockMovementResponse::fromEntity);
     }
 
     @Transactional
@@ -55,12 +63,9 @@ public class StockMovementService {
 
         User currentUser = getCurrentUser();
 
-        // Handle stock quantity based on movement type
         if (request.getType() == StockMovementType.IN) {
-            // Increase stock
             product.setQuantity(product.getQuantity() + request.getQuantity());
         } else if (request.getType() == StockMovementType.OUT) {
-            // Check if sufficient stock
             if (product.getQuantity() < request.getQuantity()) {
                 throw new InsufficientStockException(
                         product.getName(),
@@ -68,13 +73,11 @@ public class StockMovementService {
                         request.getQuantity()
                 );
             }
-            // Decrease stock
             product.setQuantity(product.getQuantity() - request.getQuantity());
         }
 
         productRepository.save(product);
 
-        // Create movement record
         StockMovement movement = StockMovement.builder()
                 .type(request.getType())
                 .quantity(request.getQuantity())

@@ -2,6 +2,8 @@ package com.stockflow.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -31,6 +33,7 @@ public class Vente {
     private User user;
 
     @OneToMany(mappedBy = "vente", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     @Builder.Default
     private List<LigneVente> lignes = new ArrayList<>();
 

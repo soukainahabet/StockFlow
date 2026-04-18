@@ -1,30 +1,44 @@
 package com.stockflow.service;
 
 import com.stockflow.dto.request.ProductRequest;
+import com.stockflow.dto.response.PageResponse;
 import com.stockflow.dto.response.ProductResponse;
+import com.stockflow.exception.DuplicateResourceException;
 import com.stockflow.exception.ResourceNotFoundException;
 import com.stockflow.model.Category;
 import com.stockflow.model.Product;
 import com.stockflow.repository.CategoryRepository;
 import com.stockflow.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
 
-    public List<ProductResponse> getAllProducts() {
-        return productRepository.findAll().stream()
-                .map(ProductResponse::fromEntity)
-                .collect(Collectors.toList());
+    public PageResponse<ProductResponse> getAllProducts(Pageable pageable) {
+        Page<Product> page = productRepository.findAll(pageable);
+        return PageResponse.from(page, ProductResponse::fromEntity);
+    }
+
+    public PageResponse<ProductResponse> search(String name,
+                                                Long categoryId,
+                                                BigDecimal minPrice,
+                                                BigDecimal maxPrice,
+                                                Boolean lowStock,
+                                                Pageable pageable) {
+        Page<Product> page = productRepository.search(name, categoryId, minPrice, maxPrice, lowStock, pageable);
+        return PageResponse.from(page, ProductResponse::fromEntity);
     }
 
     public ProductResponse getProductById(Long id) {
@@ -33,20 +47,26 @@ public class ProductService {
         return ProductResponse.fromEntity(product);
     }
 
-    public List<ProductResponse> getProductsByCategory(Long categoryId) {
-        return productRepository.findByCategoryId(categoryId).stream()
-                .map(ProductResponse::fromEntity)
-                .collect(Collectors.toList());
+    public PageResponse<ProductResponse> getProductsByCategory(Long categoryId, Pageable pageable) {
+        if (!categoryRepository.existsById(categoryId)) {
+            throw new ResourceNotFoundException("Category", "id", categoryId);
+        }
+        Page<Product> page = productRepository.findByCategoryId(categoryId, pageable);
+        return PageResponse.from(page, ProductResponse::fromEntity);
     }
 
     public List<ProductResponse> getLowStockProducts() {
-        return productRepository.findLowStockProducts().stream()
+        return productRepository.findLowStockProductsOrderByQuantity().stream()
                 .map(ProductResponse::fromEntity)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Transactional
     public ProductResponse createProduct(ProductRequest request) {
+        if (productRepository.existsByName(request.getName())) {
+            throw new DuplicateResourceException("Product", "name", request.getName());
+        }
+
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
 
@@ -66,6 +86,11 @@ public class ProductService {
     public ProductResponse updateProduct(Long id, ProductRequest request) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product", "id", id));
+
+        if (!product.getName().equals(request.getName())
+                && productRepository.existsByName(request.getName())) {
+            throw new DuplicateResourceException("Product", "name", request.getName());
+        }
 
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));

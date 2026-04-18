@@ -2,27 +2,29 @@ package com.stockflow.service;
 
 import com.stockflow.dto.request.CategoryRequest;
 import com.stockflow.dto.response.CategoryResponse;
+import com.stockflow.dto.response.PageResponse;
 import com.stockflow.exception.DuplicateResourceException;
 import com.stockflow.exception.ResourceNotFoundException;
 import com.stockflow.model.Category;
 import com.stockflow.repository.CategoryRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
 
-    public List<CategoryResponse> getAllCategories() {
-        return categoryRepository.findAll().stream()
-                .map(CategoryResponse::fromEntity)
-                .collect(Collectors.toList());
+    public PageResponse<CategoryResponse> getAllCategories(String name, Pageable pageable) {
+        Page<Category> page = (name == null || name.isBlank())
+                ? categoryRepository.findAll(pageable)
+                : categoryRepository.findByNameContainingIgnoreCase(name.trim(), pageable);
+        return PageResponse.from(page, CategoryResponse::fromEntity);
     }
 
     public CategoryResponse getCategoryById(Long id) {
