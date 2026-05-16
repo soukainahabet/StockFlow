@@ -34,6 +34,7 @@ public class VenteService {
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final StockMovementRepository stockMovementRepository;
+    private final InvoiceService invoiceService;
 
     public PageResponse<VenteResponse> search(Long userId,
                                               LocalDateTime startDate,
@@ -109,6 +110,9 @@ public class VenteService {
 
         vente.setTotal(total);
         Vente savedVente = venteRepository.save(vente);
+
+        // Smart invoice: auto-generated, customer info filled in later by the user.
+        invoiceService.createForVente(savedVente);
 
         return VenteResponse.fromEntity(savedVente);
     }

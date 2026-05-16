@@ -51,4 +51,9 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
                          Pageable pageable);
 
     boolean existsByName(String name);
+
+    @EntityGraph(attributePaths = "category")
+    java.util.Optional<Product> findByBarcode(String barcode);
+
+    boolean existsByBarcode(String barcode);
 }

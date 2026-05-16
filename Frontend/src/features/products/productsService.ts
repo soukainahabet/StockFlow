@@ -26,6 +26,13 @@ export const productsService = {
   getById: (id: number) =>
     unwrap<ProductResponse>(api.get<ApiResponse<ProductResponse>>(`/api/products/${id}`)),
 
+  getByBarcode: (barcode: string) =>
+    unwrap<ProductResponse>(
+      api.get<ApiResponse<ProductResponse>>(
+        `/api/products/by-barcode/${encodeURIComponent(barcode)}`,
+      ),
+    ),
+
   lowStock: () =>
     unwrap<ProductResponse[]>(api.get<ApiResponse<ProductResponse[]>>("/api/products/low-stock")),
 

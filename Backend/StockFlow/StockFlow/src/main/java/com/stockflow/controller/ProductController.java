@@ -70,6 +70,13 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(products));
     }
 
+    @GetMapping("/by-barcode/{barcode}")
+    @Operation(summary = "Lookup a product by its barcode (used by the camera scanner on vente creation)")
+    public ResponseEntity<ApiResponse<ProductResponse>> getProductByBarcode(@PathVariable String barcode) {
+        ProductResponse product = productService.getProductByBarcode(barcode);
+        return ResponseEntity.ok(ApiResponse.success(product));
+    }
+
     @PostMapping
     @Operation(summary = "Create a product (ADMIN only)")
     public ResponseEntity<ApiResponse<ProductResponse>> createProduct(

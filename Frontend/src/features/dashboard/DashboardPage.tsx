@@ -1,61 +1,87 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  TrendingUp,
-  Package,
   AlertTriangle,
+  ArrowRight,
+  CalendarDays,
+  Euro,
+  Package,
   ShoppingCart,
+  TrendingUp,
 } from "lucide-react";
+import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import {
-  ResponsiveContainer,
-  BarChart,
   Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  Tooltip as RTooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  CartesianGrid,
-  LineChart,
-  Line,
 } from "recharts";
-import { dashboardService } from "@/services/dashboardService";
-import { ventesService } from "@/features/ventes/ventesService";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
-import { formatCurrency, formatDateTime } from "@/utils/format";
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ChartContainer,
+  EmptyState,
+  PageHeader,
+  Skeleton,
+  StatCard,
+} from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthContext";
+import { ventesService } from "@/features/ventes/ventesService";
+import { cn } from "@/lib/cn";
+import { dashboardService } from "@/services/dashboardService";
+import type { ProductResponse, VenteResponse } from "@/types";
+import { formatCurrency, formatDateTime } from "@/utils/format";
 
-interface KpiCardProps {
-  title: string;
-  value: string;
-  hint?: string;
-  icon: typeof TrendingUp;
-  tone?: "primary" | "success" | "warning" | "info";
+const tooltipStyle = {
+  background: "rgb(var(--color-surface-elevated))",
+  border: "1px solid rgb(var(--color-border-default))",
+  borderRadius: 6,
+  fontSize: 12,
+  boxShadow:
+    "0 8px 24px -6px rgba(0,0,0,0.10), 0 2px 6px -1px rgba(0,0,0,0.04)",
+  padding: "6px 10px",
+};
+const tooltipLabelStyle = {
+  color: "rgb(var(--color-text-muted))",
+  fontSize: 11,
+  marginBottom: 2,
+};
+const tooltipItemStyle = { color: "rgb(var(--color-text-primary))" };
+
+function aggregateByDay(ventes: VenteResponse[]) {
+  const map = new Map<string, { date: string; total: number; count: number }>();
+  for (const v of ventes) {
+    const d = new Date(v.date);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = d.toISOString().slice(0, 10);
+    const prev = map.get(key) ?? { date: key, total: 0, count: 0 };
+    prev.total += Number(v.total);
+    prev.count += 1;
+    map.set(key, prev);
+  }
+  return Array.from(map.values()).sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
 }
 
-function KpiCard({ title, value, hint, icon: Icon, tone = "primary" }: KpiCardProps) {
-  const tones = {
-    primary: "bg-primary-50 text-primary-700",
-    success: "bg-green-50 text-green-700",
-    warning: "bg-amber-50 text-amber-700",
-    info: "bg-blue-50 text-blue-700",
-  };
-  return (
-    <div className="card p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm font-medium text-secondary-500">{title}</p>
-          <p className="mt-2 text-2xl font-bold text-secondary-900 tracking-tight">{value}</p>
-          {hint && <p className="text-xs text-secondary-500 mt-1">{hint}</p>}
-        </div>
-        <div className={`rounded-lg p-2.5 ${tones[tone]}`}>
-          <Icon size={20} />
-        </div>
-      </div>
-    </div>
-  );
+function shortDate(iso: string) {
+  return new Date(iso).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "short",
+  });
 }
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const firstName = user?.name?.split(" ")[0];
+
   const totalsQuery = useQuery({
     queryKey: ["dashboard", "totals"],
     queryFn: dashboardService.getTotals,
@@ -66,193 +92,366 @@ export function DashboardPage() {
   });
   const topProductsQuery = useQuery({
     queryKey: ["dashboard", "topProducts"],
-    queryFn: () => dashboardService.getTopProducts(8),
+    queryFn: () => dashboardService.getTopProducts(6),
   });
   const recentQuery = useQuery({
-    queryKey: ["ventes", "recent"],
-    queryFn: () => ventesService.recent(7),
+    queryKey: ["ventes", "recent", 30],
+    queryFn: () => ventesService.recent(30),
   });
 
   const totals = totalsQuery.data;
   const lowStock = lowStockQuery.data ?? [];
-  const topProducts = (topProductsQuery.data ?? []).map((p) => ({
-    name: String(p.productName ?? p.name ?? "—"),
-    qty: Number(p.totalQuantity ?? p.qty ?? 0),
-  }));
+  const topProducts = topProductsQuery.data ?? [];
   const recent = recentQuery.data ?? [];
 
-  const recentChart = [...recent]
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map((v) => ({
-      label: new Date(v.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }),
-      total: Number(v.total),
-    }));
-
   const isLoading =
-    totalsQuery.isPending || lowStockQuery.isPending || topProductsQuery.isPending || recentQuery.isPending;
+    totalsQuery.isPending ||
+    lowStockQuery.isPending ||
+    topProductsQuery.isPending ||
+    recentQuery.isPending;
+
+  const dailySeries = useMemo(() => aggregateByDay(recent), [recent]);
 
   return (
-    <>
+    <div className="max-w-[1400px] mx-auto space-y-5">
       <PageHeader
-        title={`Bonjour ${user?.name?.split(" ")[0] ?? ""} 👋`}
-        subtitle="Aperçu en temps réel de l'activité de votre stock."
+        title={firstName ? `Bonjour ${firstName}` : "Tableau de bord"}
+        description="Aperçu en temps réel de l'activité de votre stock."
       />
 
-      {isLoading ? (
-        <div className="flex justify-center py-20"><Spinner size="lg" /></div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard
-              title="Ventes aujourd'hui"
-              value={formatCurrency(totals?.today ?? 0)}
-              hint={`${totals?.count ?? 0} transactions au total`}
-              icon={TrendingUp}
-              tone="primary"
-            />
-            <KpiCard
-              title="Ventes (7 jours)"
-              value={formatCurrency(totals?.week ?? 0)}
-              icon={ShoppingCart}
-              tone="info"
-            />
-            <KpiCard
-              title="Ventes (30 jours)"
-              value={formatCurrency(totals?.month ?? 0)}
-              icon={TrendingUp}
-              tone="success"
-            />
-            <KpiCard
-              title="Produits en alerte"
-              value={String(lowStock.length)}
-              hint="quantité ≤ seuil"
-              icon={AlertTriangle}
-              tone="warning"
-            />
-          </div>
+      {/* KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          label="CA du jour"
+          value={formatCurrency(totals?.today ?? 0)}
+          icon={Euro}
+          loading={isLoading}
+        />
+        <StatCard
+          label="CA 7 jours"
+          value={formatCurrency(totals?.week ?? 0)}
+          icon={CalendarDays}
+          loading={isLoading}
+        />
+        <StatCard
+          label="CA 30 jours"
+          value={formatCurrency(totals?.month ?? 0)}
+          icon={TrendingUp}
+          loading={isLoading}
+        />
+        <StatCard
+          label="Alertes stock"
+          value={lowStockQuery.isPending ? "—" : String(lowStock.length)}
+          delta={
+            lowStock.length > 0
+              ? { value: lowStock.length, tone: "warning", isPercent: false, label: "produit(s) sous seuil" }
+              : undefined
+          }
+          icon={AlertTriangle}
+          loading={lowStockQuery.isPending}
+        />
+      </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mt-6">
-            <div className="card p-5 xl:col-span-2">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-base font-semibold text-secondary-900">Top produits vendus</h3>
-                  <p className="text-xs text-secondary-500">Quantité totale écoulée</p>
-                </div>
-              </div>
-              {topProducts.length === 0 ? (
-                <p className="text-sm text-secondary-500 py-10 text-center">Aucune donnée pour le moment.</p>
-              ) : (
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={topProducts} margin={{ top: 8, right: 8, bottom: 8, left: -16 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                      <XAxis dataKey="name" tick={{ fill: "#64748B", fontSize: 11 }} interval={0} angle={-15} textAnchor="end" height={60} />
-                      <YAxis tick={{ fill: "#64748B", fontSize: 11 }} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: 8, borderColor: "#E2E8F0", fontSize: 12 }}
-                        formatter={(v) => [String(v), "Quantité"]}
-                      />
-                      <Bar dataKey="qty" fill="#2563EB" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+      {/* Main chart + top products */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex-row items-start justify-between">
+            <div>
+              <CardTitle>Chiffre d'affaires — 30 derniers jours</CardTitle>
+              <p className="text-xs text-muted mt-0.5">
+                Agrégé sur les ventes récentes
+              </p>
+            </div>
+            {dailySeries.length > 0 && (
+              <Badge variant="neutral" dot className="hidden sm:inline-flex">
+                {dailySeries.length} jour(s)
+              </Badge>
+            )}
+          </CardHeader>
+          <CardContent>
+            <ChartContainer
+              height={300}
+              loading={recentQuery.isPending}
+              empty={!recentQuery.isPending && dailySeries.length === 0}
+              emptyState="Aucune vente sur la période."
+            >
+              <LineChart
+                data={dailySeries}
+                margin={{ top: 8, right: 12, left: -8, bottom: 0 }}
+              >
+                <CartesianGrid
+                  vertical={false}
+                  stroke="rgb(var(--color-border-default))"
+                  strokeDasharray="3 3"
+                />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  stroke="rgb(var(--color-text-muted))"
+                  tickFormatter={shortDate}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  stroke="rgb(var(--color-text-muted))"
+                  width={56}
+                  tickFormatter={(v) =>
+                    v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)
+                  }
+                />
+                <RTooltip
+                  cursor={{
+                    stroke: "rgb(var(--color-border-strong))",
+                    strokeWidth: 1,
+                  }}
+                  contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelFormatter={(label: string) => shortDate(label)}
+                  formatter={(value: number) => [
+                    formatCurrency(value),
+                    "CA",
+                  ]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="total"
+                  stroke="rgb(var(--color-accent))"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 0 }}
+                />
+              </LineChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Top produits vendus</CardTitle>
+            <p className="text-xs text-muted">Quantité totale écoulée</p>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer
+              height={300}
+              loading={topProductsQuery.isPending}
+              empty={!topProductsQuery.isPending && topProducts.length === 0}
+              emptyState="Aucune vente enregistrée."
+            >
+              <BarChart
+                data={topProducts.map((p) => ({
+                  name: String(p.productName),
+                  qty: Number(p.totalQuantity),
+                }))}
+                layout="vertical"
+                margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid
+                  horizontal={false}
+                  stroke="rgb(var(--color-border-default))"
+                  strokeDasharray="3 3"
+                />
+                <XAxis
+                  type="number"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  stroke="rgb(var(--color-text-muted))"
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  stroke="rgb(var(--color-text-muted))"
+                  width={90}
+                />
+                <RTooltip
+                  cursor={{ fill: "rgb(var(--color-surface-muted))" }}
+                  contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
+                  formatter={(value: number) => [value, "Quantité"]}
+                />
+                <Bar
+                  dataKey="qty"
+                  fill="rgb(var(--color-accent))"
+                  radius={[0, 3, 3, 0]}
+                  barSize={14}
+                />
+              </BarChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent sales + Low stock */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle>Dernières ventes</CardTitle>
+            <Link
+              to="/ventes"
+              className="text-xs font-medium text-accent hover:underline inline-flex items-center gap-0.5"
+            >
+              Tout voir
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <RecentVentesList
+            ventes={recent.slice(0, 5)}
+            loading={recentQuery.isPending}
+          />
+        </Card>
+
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle>Stock faible</CardTitle>
+            <Link
+              to="/products"
+              className="text-xs font-medium text-accent hover:underline inline-flex items-center gap-0.5"
+            >
+              Voir le catalogue
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </CardHeader>
+          <LowStockList
+            products={lowStock.slice(0, 6)}
+            loading={lowStockQuery.isPending}
+          />
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function RecentVentesList({
+  ventes,
+  loading,
+}: {
+  ventes: VenteResponse[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <ul className="divide-y divide-default">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <li key={i} className="flex items-center gap-3 px-4 py-2.5">
+            <Skeleton className="h-7 w-7 rounded-full" />
+            <div className="flex-1 space-y-1.5">
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-2.5 w-20" />
+            </div>
+            <Skeleton className="h-3 w-16" />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (ventes.length === 0) {
+    return (
+      <EmptyState
+        size="sm"
+        icon={ShoppingCart}
+        title="Aucune vente"
+        description="Les ventes récentes apparaîtront ici."
+      />
+    );
+  }
+  return (
+    <ul className="divide-y divide-default">
+      {ventes.map((v) => (
+        <li key={v.id}>
+          <Link
+            to={`/ventes`}
+            className={cn(
+              "flex items-center gap-3 px-4 py-2.5 transition-colors",
+              "hover:bg-surface-muted/50",
+            )}
+          >
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent-soft-fg text-[11px] font-semibold"
+              aria-hidden="true"
+            >
+              #{v.id}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-primary truncate">{v.userName}</p>
+              <p className="text-xs text-muted">{formatDateTime(v.date)}</p>
+            </div>
+            <span className="text-sm font-medium text-primary tabular-nums">
+              {formatCurrency(v.total)}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function LowStockList({
+  products,
+  loading,
+}: {
+  products: ProductResponse[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <ul className="divide-y divide-default">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <li key={i} className="flex items-center gap-3 px-4 py-2.5">
+            <div className="flex-1 space-y-1.5">
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="h-2.5 w-24" />
+            </div>
+            <Skeleton className="h-5 w-12" />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (products.length === 0) {
+    return (
+      <EmptyState
+        size="sm"
+        icon={Package}
+        title="Stocks au-dessus du seuil"
+        description="Aucune alerte en cours."
+      />
+    );
+  }
+  return (
+    <ul className="divide-y divide-default">
+      {products.map((p) => {
+        const isOut = p.quantity === 0;
+        return (
+          <li key={p.id}>
+            <Link
+              to={`/products/${p.id}`}
+              className={cn(
+                "flex items-center gap-3 px-4 py-2.5 transition-colors",
+                "hover:bg-surface-muted/50",
               )}
-            </div>
-
-            <div className="card p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-base font-semibold text-secondary-900">Tendance des ventes</h3>
-                  <p className="text-xs text-secondary-500">Sur les 7 dernières ventes</p>
-                </div>
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-primary truncate">{p.name}</p>
+                <p className="text-xs text-muted truncate">
+                  {p.categoryName} · seuil {p.alertThreshold}
+                </p>
               </div>
-              {recentChart.length === 0 ? (
-                <p className="text-sm text-secondary-500 py-10 text-center">Aucune vente.</p>
-              ) : (
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={recentChart} margin={{ top: 8, right: 8, bottom: 8, left: -16 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                      <XAxis dataKey="label" tick={{ fill: "#64748B", fontSize: 11 }} />
-                      <YAxis tick={{ fill: "#64748B", fontSize: 11 }} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: 8, borderColor: "#E2E8F0", fontSize: 12 }}
-                        formatter={(v) => [formatCurrency(Number(v)), "Total"]}
-                      />
-                      <Line type="monotone" dataKey="total" stroke="#22C55E" strokeWidth={2.5} dot={{ r: 3 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-6">
-            <div className="card overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-secondary-100">
-                <h3 className="text-base font-semibold text-secondary-900">Ventes récentes</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr>
-                      <th className="table-th">#</th>
-                      <th className="table-th">Date</th>
-                      <th className="table-th">Vendeur</th>
-                      <th className="table-th text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recent.length === 0 ? (
-                      <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-secondary-500">Aucune vente.</td></tr>
-                    ) : recent.map((v) => (
-                      <tr key={v.id} className="hover:bg-secondary-50/50">
-                        <td className="table-td font-medium">#{v.id}</td>
-                        <td className="table-td">{formatDateTime(v.date)}</td>
-                        <td className="table-td">{v.userName}</td>
-                        <td className="table-td text-right font-semibold">{formatCurrency(v.total)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="card overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-secondary-100">
-                <h3 className="text-base font-semibold text-secondary-900">Stock faible</h3>
-                <Package size={18} className="text-secondary-400" />
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr>
-                      <th className="table-th">Produit</th>
-                      <th className="table-th">Catégorie</th>
-                      <th className="table-th text-right">Qté</th>
-                      <th className="table-th text-right">Seuil</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lowStock.length === 0 ? (
-                      <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-secondary-500">Tous les stocks sont au-dessus du seuil ✅</td></tr>
-                    ) : lowStock.slice(0, 8).map((p) => (
-                      <tr key={p.id} className="hover:bg-secondary-50/50">
-                        <td className="table-td font-medium">{p.name}</td>
-                        <td className="table-td">{p.categoryName}</td>
-                        <td className="table-td text-right">
-                          <span className="badge-error">{p.quantity}</span>
-                        </td>
-                        <td className="table-td text-right text-secondary-500">{p.alertThreshold}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </>
+              <Badge variant={isOut ? "danger" : "warning"} dot>
+                {p.quantity}
+              </Badge>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

@@ -1,35 +1,57 @@
-import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Eye, ShoppingCart } from "lucide-react";
-import { Link } from "react-router-dom";
-import toast from "react-hot-toast";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
-import { Pagination } from "@/components/ui/Pagination";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { ventesService, type VenteSearchParams } from "./ventesService";
+import { Eye, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  DataTable,
+  FilterBar,
+  Input,
+  Label,
+  PageHeader,
+  Pagination,
+  toastUI,
+  Tooltip,
+  type Column,
+} from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthContext";
+import type { VenteResponse } from "@/types";
 import { formatCurrency, formatDateTime } from "@/utils/format";
 import { VenteDetailModal } from "./VenteDetailModal";
-import type { VenteResponse } from "@/types";
+import { ventesService, type VenteSearchParams } from "./ventesService";
 
 export function VentesPage() {
   const { hasRole } = useAuth();
-  const canCreate = hasRole("ADMIN", "SELLER", "MANAGER");
+  const canCreate = hasRole("ADMIN", "SELLER");
   const canDelete = hasRole("ADMIN");
   const qc = useQueryClient();
 
-  const [page, setPage] = useState(0);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [minTotal, setMinTotal] = useState<string>("");
-  const [maxTotal, setMaxTotal] = useState<string>("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = Math.max(0, Number(searchParams.get("page") ?? 0));
+  const startDate = searchParams.get("startDate") ?? "";
+  const endDate = searchParams.get("endDate") ?? "";
+  const minTotal = searchParams.get("minTotal") ?? "";
+  const maxTotal = searchParams.get("maxTotal") ?? "";
+
+  const update = (patch: Record<string, string | number | undefined>) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(patch)) {
+          if (v === undefined || v === "" || v === 0) next.delete(k);
+          else next.set(k, String(v));
+        }
+        return next;
+      },
+      { replace: true },
+    );
 
   const params: VenteSearchParams = useMemo(
     () => ({
       page,
-      size: 10,
+      size: 15,
       startDate: startDate ? `${startDate}T00:00:00` : undefined,
       endDate: endDate ? `${endDate}T23:59:59` : undefined,
       minTotal: minTotal ? Number(minTotal) : undefined,
@@ -44,153 +66,210 @@ export function VentesPage() {
   });
 
   const [detailId, setDetailId] = useState<number | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<VenteResponse | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<VenteResponse | null>(
+    null,
+  );
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => ventesService.remove(id),
     onSuccess: () => {
-      toast.success("Vente supprimée");
+      toastUI.success("Vente supprimée");
       setConfirmDelete(null);
       void qc.invalidateQueries({ queryKey: ["ventes"] });
     },
+    onError: () => toastUI.error("Suppression impossible"),
   });
 
   const data = ventesQuery.data;
+  const total = data?.totalElements ?? 0;
+  const hasActiveFilters =
+    Boolean(startDate || endDate || minTotal || maxTotal);
+
+  const columns: Column<VenteResponse>[] = [
+    {
+      id: "id",
+      header: "N°",
+      cell: (v) => (
+        <span className="font-mono text-xs text-muted">#{v.id}</span>
+      ),
+      width: "72px",
+      sortKey: "id",
+    },
+    {
+      id: "date",
+      header: "Date",
+      cell: (v) => (
+        <span className="text-secondary">{formatDateTime(v.date)}</span>
+      ),
+      sortKey: "date",
+      width: "180px",
+    },
+    {
+      id: "seller",
+      header: "Vendeur",
+      cell: (v) => v.userName,
+    },
+    {
+      id: "lines",
+      header: "Lignes",
+      cell: (v) => (
+        <span className="text-muted">{v.lignes?.length ?? 0}</span>
+      ),
+      align: "right",
+      width: "80px",
+      hideable: true,
+    },
+    {
+      id: "total",
+      header: "Total",
+      cell: (v) => (
+        <span className="font-medium text-primary">
+          {formatCurrency(v.total)}
+        </span>
+      ),
+      align: "right",
+      sortKey: "total",
+      width: "120px",
+    },
+    {
+      id: "actions",
+      header: "",
+      cell: (v) => (
+        <div className="inline-flex items-center gap-0.5 justify-end" data-row-stop>
+          <Tooltip content="Voir le détail">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setDetailId(v.id)}
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+          </Tooltip>
+          {canDelete && (
+            <Tooltip content="Supprimer">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setConfirmDelete(v)}
+                className="text-muted hover:text-danger"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip>
+          )}
+        </div>
+      ),
+      align: "right",
+      compact: true,
+      width: "96px",
+    },
+  ];
 
   return (
-    <>
+    <div className="max-w-[1400px] mx-auto space-y-4">
       <PageHeader
         title="Ventes"
-        subtitle="Historique de toutes les transactions."
+        description="Historique de toutes les transactions enregistrées."
+        meta={total > 0 && <Badge variant="neutral">{total}</Badge>}
         actions={
           canCreate && (
-            <Link to="/ventes/new" className="btn-primary">
-              <Plus size={16} />
-              Nouvelle vente
-            </Link>
+            <Button asChild>
+              <Link to="/ventes/new">
+                <Plus className="h-3.5 w-3.5" />
+                Nouvelle vente
+              </Link>
+            </Button>
           )
         }
       />
 
-      <div className="card p-4 mb-4">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div>
-            <label className="label">Date de début</label>
-            <input
-              type="date"
-              className="input"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setPage(0);
-              }}
-            />
-          </div>
-          <div>
-            <label className="label">Date de fin</label>
-            <input
-              type="date"
-              className="input"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setPage(0);
-              }}
-            />
-          </div>
-          <div>
-            <label className="label">Total min</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className="input"
-              value={minTotal}
-              onChange={(e) => {
-                setMinTotal(e.target.value);
-                setPage(0);
-              }}
-            />
-          </div>
-          <div>
-            <label className="label">Total max</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className="input"
-              value={maxTotal}
-              onChange={(e) => {
-                setMaxTotal(e.target.value);
-                setPage(0);
-              }}
-            />
-          </div>
+      <FilterBar
+        onReset={() => setSearchParams({}, { replace: true })}
+        hasActiveFilters={hasActiveFilters}
+      >
+        <div className="flex items-center gap-2">
+          <Label htmlFor="from" className="text-muted whitespace-nowrap">
+            Du
+          </Label>
+          <Input
+            id="from"
+            type="date"
+            className="w-40"
+            value={startDate}
+            onChange={(e) => update({ startDate: e.target.value, page: 0 })}
+          />
+          <Label htmlFor="to" className="text-muted whitespace-nowrap">
+            au
+          </Label>
+          <Input
+            id="to"
+            type="date"
+            className="w-40"
+            value={endDate}
+            onChange={(e) => update({ endDate: e.target.value, page: 0 })}
+          />
         </div>
-      </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="min" className="text-muted whitespace-nowrap">
+            €
+          </Label>
+          <Input
+            id="min"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="min"
+            className="w-24"
+            value={minTotal}
+            onChange={(e) => update({ minTotal: e.target.value, page: 0 })}
+          />
+          <span className="text-muted">–</span>
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="max"
+            className="w-24"
+            value={maxTotal}
+            onChange={(e) => update({ maxTotal: e.target.value, page: 0 })}
+          />
+        </div>
+      </FilterBar>
 
-      <div className="card overflow-hidden">
-        {ventesQuery.isPending ? (
-          <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-        ) : !data || data.empty ? (
-          <EmptyState icon={ShoppingCart} title="Aucune vente" description="Ajustez vos filtres ou enregistrez une nouvelle vente." />
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr>
-                    <th className="table-th">#</th>
-                    <th className="table-th">Date</th>
-                    <th className="table-th">Vendeur</th>
-                    <th className="table-th text-right">Lignes</th>
-                    <th className="table-th text-right">Total</th>
-                    <th className="table-th text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.content.map((v) => (
-                    <tr key={v.id} className="hover:bg-secondary-50/40">
-                      <td className="table-td font-medium">#{v.id}</td>
-                      <td className="table-td">{formatDateTime(v.date)}</td>
-                      <td className="table-td">{v.userName}</td>
-                      <td className="table-td text-right">{v.lignes?.length ?? 0}</td>
-                      <td className="table-td text-right font-semibold">{formatCurrency(v.total)}</td>
-                      <td className="table-td text-right">
-                        <div className="inline-flex gap-1">
-                          <button
-                            className="btn-ghost p-2"
-                            aria-label="Voir le détail"
-                            onClick={() => setDetailId(v.id)}
-                          >
-                            <Eye size={16} />
-                          </button>
-                          {canDelete && (
-                            <button
-                              className="btn-ghost p-2 text-error hover:bg-red-50"
-                              aria-label="Supprimer"
-                              onClick={() => setConfirmDelete(v)}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              page={data.page}
-              totalPages={data.totalPages}
-              totalElements={data.totalElements}
-              size={data.size}
-              onPageChange={setPage}
-            />
-          </>
-        )}
-      </div>
+      <DataTable<VenteResponse>
+        columns={columns}
+        data={data?.content ?? []}
+        getRowId={(v) => v.id}
+        loading={ventesQuery.isPending}
+        rowCount={10}
+        onRowClick={(v) => setDetailId(v.id)}
+        emptyTitle="Aucune vente"
+        emptyDescription={
+          hasActiveFilters
+            ? "Ajustez vos filtres."
+            : "Aucune transaction enregistrée."
+        }
+        emptyAction={
+          !hasActiveFilters && canCreate ? (
+            <Button asChild>
+              <Link to="/ventes/new">
+                <Plus className="h-3.5 w-3.5" />
+                Nouvelle vente
+              </Link>
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {data && data.totalPages > 1 && (
+        <Pagination
+          page={data.page}
+          totalPages={data.totalPages}
+          totalElements={data.totalElements}
+          pageSize={data.size}
+          onPageChange={(p) => update({ page: p })}
+        />
+      )}
 
       <VenteDetailModal id={detailId} onClose={() => setDetailId(null)} />
 
@@ -198,12 +277,13 @@ export function VentesPage() {
         open={Boolean(confirmDelete)}
         title="Supprimer la vente ?"
         message={`La vente #${confirmDelete?.id} sera supprimée. Cette action ne réintègre pas le stock.`}
+        confirmLabel="Supprimer"
         loading={deleteMut.isPending}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => {
           if (confirmDelete) deleteMut.mutate(confirmDelete.id);
         }}
       />
-    </>
+    </div>
   );
 }

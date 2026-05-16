@@ -51,7 +51,11 @@ export interface CategoryRequest {
 export interface ProductResponse {
   id: number;
   name: string;
+  /** EAN-13, UPC, Code-128 ou QR — null si non renseigné. */
+  barcode: string | null;
   price: number;
+  /** Prix d'achat / coût unitaire — null sur les lignes legacy. */
+  buyPrice: number | null;
   quantity: number;
   alertThreshold: number;
   categoryName: string;
@@ -61,10 +65,46 @@ export interface ProductResponse {
 
 export interface ProductRequest {
   name: string;
+  barcode?: string | null;
   price: number;
+  buyPrice: number;
   quantity: number;
   alertThreshold: number;
   categoryId: number;
+}
+
+// ---------- Analytics ----------
+
+export interface TopProductDto {
+  productId: number;
+  productName: string;
+  categoryName: string;
+  quantitySold: number;
+  salesCount: number;
+  revenue: number;
+}
+
+export interface ProfitProductDto {
+  productId: number;
+  productName: string;
+  categoryName: string;
+  buyPrice: number | null;
+  sellPrice: number;
+  quantitySold: number;
+  revenue: number;
+  cost: number;
+  profit: number;
+  marginPercent: number | null;
+}
+
+export interface ProfitSummaryDto {
+  totalRevenue: number;
+  totalCost: number;
+  totalProfit: number;
+  totalQuantitySold: number;
+  productCount: number;
+  overallMarginPercent: number | null;
+  items: ProfitProductDto[];
 }
 
 export interface LigneVenteRequest {
@@ -158,4 +198,30 @@ export interface PaginationParams {
   page?: number;
   size?: number;
   sort?: string;
+}
+
+// ---------- Invoices ----------
+
+export interface InvoiceResponse {
+  id: number;
+  invoiceNumber: string;
+  venteId: number;
+  issueDate: string;
+  totalAmount: number;
+  issuedByName: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  customerAddress: string | null;
+  customerPhone: string | null;
+  notes: string | null;
+  lignes: LigneVenteResponse[];
+  hasCustomerInfo: boolean;
+}
+
+export interface InvoiceUpdateRequest {
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerAddress?: string | null;
+  customerPhone?: string | null;
+  notes?: string | null;
 }

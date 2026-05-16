@@ -1,5 +1,5 @@
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
-import toast from "react-hot-toast";
+import { toastUI } from "@/components/ui/Toast";
 import { tokenStorage } from "@/utils/storage";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -38,23 +38,23 @@ api.interceptors.response.use(
     if (status === 401) {
       tokenStorage.clear();
       if (logoutHandler) logoutHandler();
-      toast.error("Session expirée, veuillez vous reconnecter.");
+      toastUI.error("Session expirée, veuillez vous reconnecter.");
       return Promise.reject(error);
     }
 
     if (status === 403) {
-      toast.error("Accès refusé : vous n'avez pas les permissions nécessaires.");
+      toastUI.error("Accès refusé : vous n'avez pas les permissions nécessaires.");
       return Promise.reject(error);
     }
 
     const fieldErrors = payload?.errors;
     if (fieldErrors && typeof fieldErrors === "object") {
       const first = Object.values(fieldErrors)[0];
-      if (first) toast.error(String(first));
+      if (first) toastUI.error(String(first));
     } else if (payload?.message) {
-      toast.error(payload.message);
+      toastUI.error(payload.message);
     } else if (error.message) {
-      toast.error(error.message);
+      toastUI.error(error.message);
     }
 
     return Promise.reject(error);

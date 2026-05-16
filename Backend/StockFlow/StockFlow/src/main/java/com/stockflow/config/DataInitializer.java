@@ -21,11 +21,9 @@ public class DataInitializer implements CommandLineRunner {
     public static final String ROLE_STOCK_MANAGER = "STOCK_MANAGER";
     public static final String ROLE_SELLER = "SELLER";
     public static final String ROLE_MANAGER = "MANAGER";
-    /** Kept for backwards compatibility with existing data — new users should not be assigned USER. */
-    public static final String ROLE_USER = "USER";
 
     public static final List<String> ALL_ROLES = List.of(
-            ROLE_ADMIN, ROLE_STOCK_MANAGER, ROLE_SELLER, ROLE_MANAGER, ROLE_USER
+            ROLE_ADMIN, ROLE_STOCK_MANAGER, ROLE_SELLER, ROLE_MANAGER
     );
 
     private final RoleRepository roleRepository;

@@ -3,7 +3,11 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { RegisterPage } from "@/features/auth/RegisterPage";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
+import { InvoiceDetailPage } from "@/features/invoices/InvoiceDetailPage";
+import { InvoicesPage } from "@/features/invoices/InvoicesPage";
+import { ProductDetailPage } from "@/features/products/ProductDetailPage";
 import { ProductsPage } from "@/features/products/ProductsPage";
+import { ReportsPage } from "@/features/reports/ReportsPage";
 import { CategoriesPage } from "@/features/categories/CategoriesPage";
 import { VentesPage } from "@/features/ventes/VentesPage";
 import { VenteCreatePage } from "@/features/ventes/VenteCreatePage";
@@ -24,10 +28,26 @@ export function AppRoutes() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/products" element={<ProductsPage />} />
+          <Route path="/products/:id" element={<ProductDetailPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
-          <Route path="/ventes" element={<VentesPage />} />
-          <Route path="/ventes/new" element={<VenteCreatePage />} />
-          <Route path="/stock-movements" element={<StockMovementsPage />} />
+          <Route element={<RoleGuard allowed={["ADMIN", "SELLER", "MANAGER"]} />}>
+            <Route path="/ventes" element={<VentesPage />} />
+            <Route path="/invoices" element={<InvoicesPage />} />
+            <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+          </Route>
+          {/* Création de vente : ADMIN + SELLER uniquement (MANAGER est read-only) */}
+          <Route element={<RoleGuard allowed={["ADMIN", "SELLER"]} />}>
+            <Route path="/ventes/new" element={<VenteCreatePage />} />
+          </Route>
+
+          <Route element={<RoleGuard allowed={["ADMIN", "STOCK_MANAGER", "MANAGER"]} />}>
+            <Route path="/stock-movements" element={<StockMovementsPage />} />
+          </Route>
+
+          {/* Rapports d'activité : ADMIN + MANAGER (consultation uniquement) */}
+          <Route element={<RoleGuard allowed={["ADMIN", "MANAGER"]} />}>
+            <Route path="/reports" element={<ReportsPage />} />
+          </Route>
 
           <Route element={<RoleGuard allowed={["ADMIN"]} />}>
             <Route path="/users" element={<UsersPage />} />

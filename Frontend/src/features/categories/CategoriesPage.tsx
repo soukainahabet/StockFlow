@@ -1,27 +1,58 @@
-import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Search, Tags } from "lucide-react";
-import toast from "react-hot-toast";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
-import { Pagination } from "@/components/ui/Pagination";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { Modal } from "@/components/ui/Modal";
-import { categoriesService, type CategorySearchParams } from "./categoriesService";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  DataTable,
+  Drawer,
+  DrawerBody,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  FilterBar,
+  Input,
+  Label,
+  PageHeader,
+  Pagination,
+  SearchInput,
+  toastUI,
+  Tooltip,
+  type Column,
+} from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthContext";
 import type { CategoryResponse } from "@/types";
+import { categoriesService, type CategorySearchParams } from "./categoriesService";
 
 export function CategoriesPage() {
   const { hasRole } = useAuth();
   const canManage = hasRole("ADMIN");
   const qc = useQueryClient();
 
-  const [page, setPage] = useState(0);
-  const [name, setName] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const q = searchParams.get("q") ?? "";
+  const page = Math.max(0, Number(searchParams.get("page") ?? 0));
+
+  const update = (patch: Record<string, string | number | undefined>) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(patch)) {
+          if (v === undefined || v === "" || v === 0) next.delete(k);
+          else next.set(k, String(v));
+        }
+        return next;
+      },
+      { replace: true },
+    );
+
   const params: CategorySearchParams = useMemo(
-    () => ({ page, size: 10, name: name || undefined }),
-    [page, name],
+    () => ({ page, size: 15, name: q || undefined }),
+    [page, q],
   );
 
   const categoriesQuery = useQuery({
@@ -32,7 +63,9 @@ export function CategoriesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CategoryResponse | null>(null);
   const [formName, setFormName] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState<CategoryResponse | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<CategoryResponse | null>(
+    null,
+  );
 
   const openCreate = () => {
     setEditing(null);
@@ -48,26 +81,30 @@ export function CategoriesPage() {
   const createMut = useMutation({
     mutationFn: (n: string) => categoriesService.create({ name: n }),
     onSuccess: () => {
-      toast.success("Catégorie créée");
+      toastUI.success("Catégorie créée");
       setFormOpen(false);
       void qc.invalidateQueries({ queryKey: ["categories"] });
     },
+    onError: () => toastUI.error("Création impossible"),
   });
   const updateMut = useMutation({
-    mutationFn: ({ id, n }: { id: number; n: string }) => categoriesService.update(id, { name: n }),
+    mutationFn: ({ id, n }: { id: number; n: string }) =>
+      categoriesService.update(id, { name: n }),
     onSuccess: () => {
-      toast.success("Catégorie mise à jour");
+      toastUI.success("Catégorie mise à jour");
       setFormOpen(false);
       void qc.invalidateQueries({ queryKey: ["categories"] });
     },
+    onError: () => toastUI.error("Mise à jour impossible"),
   });
   const deleteMut = useMutation({
     mutationFn: (id: number) => categoriesService.remove(id),
     onSuccess: () => {
-      toast.success("Catégorie supprimée");
+      toastUI.success("Catégorie supprimée");
       setConfirmDelete(null);
       void qc.invalidateQueries({ queryKey: ["categories"] });
     },
+    onError: () => toastUI.error("Suppression impossible — vérifiez que la catégorie n'est pas utilisée"),
   });
 
   const submit = (e: FormEvent) => {
@@ -77,135 +114,174 @@ export function CategoriesPage() {
   };
 
   const data = categoriesQuery.data;
+  const total = data?.totalElements ?? 0;
+
+  const columns: Column<CategoryResponse>[] = [
+    {
+      id: "id",
+      header: "Réf.",
+      cell: (c) => <span className="font-mono text-xs text-muted">#{c.id}</span>,
+      width: "72px",
+    },
+    {
+      id: "name",
+      header: "Nom",
+      cell: (c) => <span className="font-medium text-primary">{c.name}</span>,
+      sortKey: "name",
+    },
+    ...(canManage
+      ? [
+          {
+            id: "actions",
+            header: "",
+            cell: (c: CategoryResponse) => (
+              <div className="inline-flex items-center gap-0.5 justify-end" data-row-stop>
+                <Tooltip content="Modifier">
+                  <Button variant="ghost" size="icon-sm" onClick={() => openEdit(c)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Supprimer">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setConfirmDelete(c)}
+                    className="text-muted hover:text-danger"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </Tooltip>
+              </div>
+            ),
+            align: "right" as const,
+            compact: true,
+            width: "96px",
+          },
+        ]
+      : []),
+  ];
 
   return (
-    <>
+    <div className="max-w-[1100px] mx-auto space-y-4">
       <PageHeader
         title="Catégories"
-        subtitle="Organisez vos produits par catégorie."
+        description="Organisez votre catalogue par catégorie."
+        meta={total > 0 && <Badge variant="neutral">{total}</Badge>}
         actions={
           canManage && (
-            <button className="btn-primary" onClick={openCreate}>
-              <Plus size={16} />
+            <Button onClick={openCreate}>
+              <Plus className="h-3.5 w-3.5" />
               Nouvelle catégorie
-            </button>
+            </Button>
           )
         }
       />
 
-      <div className="card p-4 mb-4">
-        <div className="relative max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400" />
-          <input
-            className="input pl-9"
-            placeholder="Rechercher..."
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              setPage(0);
-            }}
-          />
-        </div>
-      </div>
-
-      <div className="card overflow-hidden">
-        {categoriesQuery.isPending ? (
-          <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-        ) : !data || data.empty ? (
-          <EmptyState icon={Tags} title="Aucune catégorie" />
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr>
-                    <th className="table-th">ID</th>
-                    <th className="table-th">Nom</th>
-                    {canManage && <th className="table-th text-right">Actions</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.content.map((c) => (
-                    <tr key={c.id} className="hover:bg-secondary-50/40">
-                      <td className="table-td text-secondary-500">#{c.id}</td>
-                      <td className="table-td font-medium">{c.name}</td>
-                      {canManage && (
-                        <td className="table-td text-right">
-                          <div className="inline-flex gap-1">
-                            <button className="btn-ghost p-2" onClick={() => openEdit(c)} aria-label="Modifier">
-                              <Pencil size={16} />
-                            </button>
-                            <button
-                              className="btn-ghost p-2 text-error hover:bg-red-50"
-                              onClick={() => setConfirmDelete(c)}
-                              aria-label="Supprimer"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              page={data.page}
-              totalPages={data.totalPages}
-              totalElements={data.totalElements}
-              size={data.size}
-              onPageChange={setPage}
-            />
-          </>
-        )}
-      </div>
-
-      <Modal
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        title={editing ? "Modifier la catégorie" : "Nouvelle catégorie"}
-        size="sm"
-        footer={
-          <>
-            <button className="btn-secondary" onClick={() => setFormOpen(false)}>Annuler</button>
-            <button
-              type="submit"
-              form="category-form"
-              className="btn-primary"
-              disabled={createMut.isPending || updateMut.isPending}
-            >
-              {createMut.isPending || updateMut.isPending ? "..." : editing ? "Enregistrer" : "Créer"}
-            </button>
-          </>
-        }
+      <FilterBar
+        onReset={() => setSearchParams({}, { replace: true })}
+        hasActiveFilters={Boolean(q)}
       >
-        <form id="category-form" onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="label">Nom</label>
-            <input
-              className="input"
-              required
-              minLength={2}
-              maxLength={100}
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-              autoFocus
-            />
-          </div>
-        </form>
-      </Modal>
+        <SearchInput
+          key={q}
+          defaultValue={q}
+          onSearch={(v) => update({ q: v, page: 0 })}
+          placeholder="Rechercher une catégorie…"
+          className="w-full sm:w-72"
+        />
+      </FilterBar>
+
+      <DataTable<CategoryResponse>
+        columns={columns}
+        data={data?.content ?? []}
+        getRowId={(c) => c.id}
+        loading={categoriesQuery.isPending}
+        rowCount={8}
+        emptyTitle="Aucune catégorie"
+        emptyDescription={
+          q
+            ? "Ajustez votre recherche."
+            : "Créez votre première catégorie."
+        }
+        emptyAction={
+          !q && canManage ? (
+            <Button onClick={openCreate}>
+              <Plus className="h-3.5 w-3.5" />
+              Nouvelle catégorie
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {data && data.totalPages > 1 && (
+        <Pagination
+          page={data.page}
+          totalPages={data.totalPages}
+          totalElements={data.totalElements}
+          pageSize={data.size}
+          onPageChange={(p) => update({ page: p })}
+        />
+      )}
+
+      <Drawer open={formOpen} onOpenChange={(o) => !o && setFormOpen(false)}>
+        <DrawerContent size="sm">
+          <DrawerHeader>
+            <DrawerTitle>
+              {editing ? "Modifier la catégorie" : "Nouvelle catégorie"}
+            </DrawerTitle>
+            <DrawerDescription>
+              {editing
+                ? "Renommez cette catégorie."
+                : "Ajoutez une catégorie au catalogue."}
+            </DrawerDescription>
+          </DrawerHeader>
+          <form onSubmit={submit} className="contents">
+            <DrawerBody>
+              <div className="space-y-1.5">
+                <Label htmlFor="cat-name" required>
+                  Nom
+                </Label>
+                <Input
+                  id="cat-name"
+                  required
+                  minLength={2}
+                  maxLength={100}
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </DrawerBody>
+            <DrawerFooter>
+              <Button
+                type="submit"
+                loading={createMut.isPending || updateMut.isPending}
+              >
+                {editing ? "Enregistrer" : "Créer"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setFormOpen(false)}
+                disabled={createMut.isPending || updateMut.isPending}
+              >
+                Annuler
+              </Button>
+            </DrawerFooter>
+          </form>
+        </DrawerContent>
+      </Drawer>
 
       <ConfirmDialog
         open={Boolean(confirmDelete)}
         title="Supprimer la catégorie ?"
-        message={`"${confirmDelete?.name}" sera supprimée. Les produits associés seront affectés.`}
+        message={`"${confirmDelete?.name}" sera supprimée. Les produits associés en seront détachés.`}
+        confirmLabel="Supprimer"
         loading={deleteMut.isPending}
         onClose={() => setConfirmDelete(null)}
         onConfirm={() => {
           if (confirmDelete) deleteMut.mutate(confirmDelete.id);
         }}
       />
-    </>
+    </div>
   );
 }

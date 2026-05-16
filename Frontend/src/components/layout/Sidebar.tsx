@@ -1,95 +1,295 @@
-import { NavLink } from "react-router-dom";
 import {
+  ArrowLeftRight,
+  BarChart3,
+  Boxes,
+  ChevronsLeft,
+  FileText,
   LayoutDashboard,
   Package,
-  Tags,
-  ShoppingCart,
-  ArrowLeftRight,
-  Users,
+  PanelLeft,
   ShieldCheck,
-  Boxes,
+  ShoppingCart,
+  Tags,
+  Users,
+  type LucideIcon,
 } from "lucide-react";
-import clsx from "clsx";
+import { useEffect } from "react";
+import { NavLink, useLocation } from "react-router-dom";
+import { Button } from "@/components/ui/Button";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { useAuth } from "@/features/auth/AuthContext";
+import { cn } from "@/lib/cn";
 import type { Role } from "@/types";
 
 interface NavItem {
   to: string;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: LucideIcon;
   roles?: Role[];
 }
 
-const NAV: NavItem[] = [
-  { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
-  { to: "/products", label: "Produits", icon: Package },
-  { to: "/categories", label: "Catégories", icon: Tags },
-  { to: "/ventes", label: "Ventes", icon: ShoppingCart },
-  { to: "/stock-movements", label: "Mouvements de stock", icon: ArrowLeftRight },
-  { to: "/users", label: "Utilisateurs", icon: Users, roles: ["ADMIN"] },
-  { to: "/roles", label: "Rôles", icon: ShieldCheck, roles: ["ADMIN"] },
-];
-
-interface Props {
-  open: boolean;
-  onClose: () => void;
+interface NavSection {
+  label?: string;
+  items: NavItem[];
 }
 
-export function Sidebar({ open, onClose }: Props) {
-  const { hasRole } = useAuth();
+const SECTIONS: NavSection[] = [
+  {
+    items: [
+      { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
+      {
+        to: "/reports",
+        label: "Rapports",
+        icon: BarChart3,
+        roles: ["ADMIN", "MANAGER"],
+      },
+    ],
+  },
+  {
+    label: "Catalogue",
+    items: [
+      { to: "/products", label: "Produits", icon: Package },
+      { to: "/categories", label: "Catégories", icon: Tags },
+    ],
+  },
+  {
+    label: "Opérations",
+    items: [
+      {
+        to: "/stock-movements",
+        label: "Mouvements de stock",
+        icon: ArrowLeftRight,
+        roles: ["ADMIN", "STOCK_MANAGER", "MANAGER"],
+      },
+      {
+        to: "/ventes",
+        label: "Ventes",
+        icon: ShoppingCart,
+        roles: ["ADMIN", "SELLER", "MANAGER"],
+      },
+      {
+        to: "/invoices",
+        label: "Factures",
+        icon: FileText,
+        roles: ["ADMIN", "SELLER", "MANAGER"],
+      },
+    ],
+  },
+  {
+    label: "Administration",
+    items: [
+      { to: "/users", label: "Utilisateurs", icon: Users, roles: ["ADMIN"] },
+      { to: "/roles", label: "Rôles", icon: ShieldCheck, roles: ["ADMIN"] },
+    ],
+  },
+];
 
-  const items = NAV.filter((item) => !item.roles || hasRole(...item.roles));
+interface SidebarProps {
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+  collapsed: boolean;
+  onCollapsedChange: (next: boolean) => void;
+}
+
+export function Sidebar({
+  mobileOpen,
+  onMobileClose,
+  collapsed,
+  onCollapsedChange,
+}: SidebarProps) {
+  const { hasRole } = useAuth();
+  const location = useLocation();
+
+  // Ferme le drawer mobile lors d'une navigation
+  useEffect(() => {
+    onMobileClose();
+    // location.pathname uniquement — onMobileClose est stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  // Esc → ferme le drawer mobile
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onMobileClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen, onMobileClose]);
+
+  const sections = SECTIONS.map((s) => ({
+    ...s,
+    items: s.items.filter((item) => !item.roles || hasRole(...item.roles)),
+  })).filter((s) => s.items.length > 0);
 
   return (
     <>
-      {open && (
-        <div
-          className="fixed inset-0 z-30 bg-secondary-900/50 lg:hidden"
-          onClick={onClose}
-          aria-hidden
+      {/* Overlay mobile */}
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Fermer le menu"
+          className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-[2px] lg:hidden animate-fade-in"
+          onClick={onMobileClose}
         />
       )}
+
       <aside
-        className={clsx(
-          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-secondary-800 text-secondary-100 transition-transform lg:translate-x-0 lg:static lg:z-auto",
-          open ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        className={cn(
+          // Base : fixed sur mobile (drawer), relative sur desktop
+          "fixed inset-y-0 left-0 z-50 flex flex-col bg-surface border-r border-default",
+          "transition-[transform,width] duration-200 ease-out",
+          // Mobile drawer
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          // Desktop : toujours visible, largeur selon collapsed
+          "lg:relative lg:translate-x-0 lg:z-auto",
+          // Largeur : mobile fixe à 64, desktop variable
+          "w-64",
+          collapsed ? "lg:w-14" : "lg:w-60",
         )}
+        aria-label="Navigation principale"
       >
-        <div className="flex items-center gap-2.5 px-6 py-5 border-b border-secondary-700/60">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white">
-            <Boxes size={20} />
-          </div>
-          <div>
-            <p className="text-base font-bold text-white tracking-tight leading-tight">StockFlow</p>
-            <p className="text-[11px] text-secondary-400">SaaS Stock Management</p>
-          </div>
+        {/* Logo */}
+        <div
+          className={cn(
+            "flex items-center h-14 border-b border-default shrink-0",
+            collapsed ? "lg:px-2 lg:justify-center" : "lg:px-4",
+            "px-4",
+          )}
+        >
+          <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0">
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-accent-fg"
+              aria-hidden="true"
+            >
+              <Boxes className="h-4 w-4" strokeWidth={2.25} />
+            </span>
+            <span
+              className={cn(
+                "text-sm font-semibold text-primary tracking-tight truncate",
+                collapsed && "lg:hidden",
+              )}
+            >
+              StockFlow
+            </span>
+          </NavLink>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {items.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={onClose}
-              className={({ isActive }) =>
-                clsx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-primary text-white shadow-sm"
-                    : "text-secondary-300 hover:bg-secondary-700/60 hover:text-white",
-                )
-              }
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </NavLink>
-          ))}
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3">
+          <ul className="space-y-4">
+            {sections.map((section, idx) => (
+              <li key={section.label ?? `sec-${idx}`}>
+                {section.label && (
+                  <p
+                    className={cn(
+                      "px-3 mb-1 text-[11px] font-medium uppercase tracking-wider text-disabled",
+                      collapsed && "lg:sr-only",
+                    )}
+                  >
+                    {section.label}
+                  </p>
+                )}
+                <ul className="space-y-0.5 px-2">
+                  {section.items.map((item) => (
+                    <SidebarItem
+                      key={item.to}
+                      item={item}
+                      collapsed={collapsed}
+                    />
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
         </nav>
 
-        <div className="border-t border-secondary-700/60 px-6 py-4 text-[11px] text-secondary-400">
-          v1.0.0 · &copy; {new Date().getFullYear()}
+        {/* Footer / collapse toggle */}
+        <div
+          className={cn(
+            "border-t border-default shrink-0 hidden lg:flex items-center",
+            collapsed ? "p-1.5 justify-center" : "p-2 justify-between",
+          )}
+        >
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onCollapsedChange(!collapsed)}
+            aria-label={collapsed ? "Déplier la sidebar" : "Replier la sidebar"}
+            className="text-muted hover:text-primary"
+          >
+            {collapsed ? (
+              <PanelLeft className="h-4 w-4" />
+            ) : (
+              <ChevronsLeft className="h-4 w-4" />
+            )}
+          </Button>
+          {!collapsed && (
+            <span className="text-[11px] text-disabled mr-1">v1.0.0</span>
+          )}
         </div>
       </aside>
     </>
+  );
+}
+
+function SidebarItem({
+  item,
+  collapsed,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+}) {
+  const link = (
+    <NavLink
+      to={item.to}
+      className={({ isActive }) =>
+        cn(
+          "group relative flex items-center gap-2.5 rounded-md text-sm font-medium",
+          "transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring focus-visible:ring-offset-1 focus-visible:ring-offset-app",
+          collapsed
+            ? "lg:justify-center lg:px-0 lg:h-8 lg:w-8 px-2.5 h-8"
+            : "px-2.5 h-8",
+          isActive
+            ? "bg-accent-soft text-accent-soft-fg"
+            : "text-secondary hover:bg-surface-muted hover:text-primary",
+        )
+      }
+      end={item.to === "/dashboard"}
+    >
+      {({ isActive }) => (
+        <>
+          {isActive && (
+            <span
+              className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-accent"
+              aria-hidden="true"
+            />
+          )}
+          <item.icon
+            className="h-4 w-4 shrink-0"
+            strokeWidth={isActive ? 2.25 : 2}
+            aria-hidden="true"
+          />
+          <span className={cn("truncate", collapsed && "lg:hidden")}>
+            {item.label}
+          </span>
+        </>
+      )}
+    </NavLink>
+  );
+
+  // Tooltip uniquement quand replié — le NavLink gère mobile/desktop tout seul
+  // via ses variantes lg:* (sur mobile, drawer toujours déplié).
+  return (
+    <li>
+      {collapsed ? (
+        <Tooltip content={item.label} side="right">
+          {link}
+        </Tooltip>
+      ) : (
+        link
+      )}
+    </li>
   );
 }

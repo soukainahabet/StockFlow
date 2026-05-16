@@ -1,72 +1,51 @@
-import { X } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
-import clsx from "clsx";
+/**
+ * Compat shim — gardé pour les pages legacy (CategoriesPage, ProductForm,
+ * StockMovementsPage, UsersPage, RolesPage, VenteDetailModal). À supprimer
+ * une fois ces pages refondues à l'étape 3 et migrées vers <Dialog>.
+ */
+import type { ReactNode } from "react";
+import { cn } from "@/lib/cn";
+import { Dialog, DialogContent, DialogTitle } from "./Dialog";
 
-interface Props {
+interface ModalProps {
   open: boolean;
   onClose: () => void;
-  title: string;
-  description?: string;
-  children: ReactNode;
-  footer?: ReactNode;
+  title?: ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
+  footer?: ReactNode;
+  children?: ReactNode;
 }
 
-export function Modal({ open, onClose, title, description, children, footer, size = "md" }: Props) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open, onClose]);
+const sizeClass: Record<NonNullable<ModalProps["size"]>, string> = {
+  sm: "max-w-sm",
+  md: "max-w-md",
+  lg: "max-w-lg",
+  xl: "max-w-2xl",
+};
 
-  if (!open) return null;
-
-  const widths = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
-
+export function Modal({
+  open,
+  onClose,
+  title,
+  size = "md",
+  footer,
+  children,
+}: ModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-secondary-900/50 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden
-      />
-      <div
-        role="dialog"
-        aria-modal
-        aria-labelledby="modal-title"
-        className={clsx(
-          "relative w-full rounded-2xl bg-card shadow-2xl border border-secondary-100",
-          widths[size],
-        )}
-      >
-        <div className="flex items-start justify-between border-b border-secondary-100 px-6 py-4">
-          <div>
-            <h2 id="modal-title" className="text-lg font-semibold text-secondary-900">
-              {title}
-            </h2>
-            {description && <p className="mt-0.5 text-sm text-secondary-500">{description}</p>}
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className={cn("p-0 gap-0", sizeClass[size])}>
+        {title && (
+          <div className="border-b border-default px-5 py-3">
+            <DialogTitle>{title}</DialogTitle>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-secondary-400 hover:bg-secondary-100 hover:text-secondary-700"
-            aria-label="Fermer"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className="px-6 py-5 max-h-[70vh] overflow-y-auto">{children}</div>
+        )}
+        <div className="px-5 py-4">{children}</div>
         {footer && (
-          <div className="flex justify-end gap-2 border-t border-secondary-100 px-6 py-4 bg-secondary-50/50 rounded-b-2xl">
+          <div className="flex items-center justify-end gap-2 border-t border-default bg-surface-muted/30 px-5 py-3">
             {footer}
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

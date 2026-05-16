@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(rm \"D:/StockApp/Frontend/tailwind.config.js\")",
+      "Bash(rm \"D:/StockApp/Frontend/src/components/ui/Modal.tsx\")"
+    ]
+  }
+}

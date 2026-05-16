@@ -1,5 +1,13 @@
 import { AlertTriangle } from "lucide-react";
-import { Modal } from "./Modal";
+import { Button } from "./Button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./Dialog";
 
 interface Props {
   open: boolean;
@@ -25,35 +33,41 @@ export function ConfirmDialog({
   destructive = true,
 }: Props) {
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={title}
-      size="sm"
-      footer={
-        <>
-          <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className={destructive ? "btn-danger" : "btn-primary"}
-            onClick={onConfirm}
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-w-sm">
+        <div className="flex items-start gap-3">
+          {destructive && (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger-soft">
+              <AlertTriangle
+                className="h-4 w-4 text-danger-soft-fg"
+                aria-hidden="true"
+              />
+            </div>
+          )}
+          <DialogHeader className="gap-1.5">
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{message}</DialogDescription>
+          </DialogHeader>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onClose}
             disabled={loading}
           >
-            {loading ? "..." : confirmLabel}
-          </button>
-        </>
-      }
-    >
-      <div className="flex gap-3">
-        {destructive && (
-          <div className="flex-shrink-0 rounded-full bg-red-50 p-2 h-10 w-10 flex items-center justify-center">
-            <AlertTriangle className="text-error" size={20} />
-          </div>
-        )}
-        <p className="text-sm text-secondary-700">{message}</p>
-      </div>
-    </Modal>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={destructive ? "danger" : "primary"}
+            size="sm"
+            onClick={onConfirm}
+            loading={loading}
+          >
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

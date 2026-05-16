@@ -70,9 +70,16 @@ public class ProductService {
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
 
+        String barcode = normaliseBarcode(request.getBarcode());
+        if (barcode != null && productRepository.existsByBarcode(barcode)) {
+            throw new DuplicateResourceException("Product", "barcode", barcode);
+        }
+
         Product product = Product.builder()
                 .name(request.getName())
+                .barcode(barcode)
                 .price(request.getPrice())
+                .buyPrice(request.getBuyPrice())
                 .quantity(request.getQuantity())
                 .alertThreshold(request.getAlertThreshold())
                 .category(category)
@@ -80,6 +87,22 @@ public class ProductService {
 
         product = productRepository.save(product);
         return ProductResponse.fromEntity(product);
+    }
+
+    public ProductResponse getProductByBarcode(String barcode) {
+        String normalised = normaliseBarcode(barcode);
+        if (normalised == null) {
+            throw new ResourceNotFoundException("Product", "barcode", barcode);
+        }
+        return productRepository.findByBarcode(normalised)
+                .map(ProductResponse::fromEntity)
+                .orElseThrow(() -> new ResourceNotFoundException("Product", "barcode", normalised));
+    }
+
+    private static String normaliseBarcode(String raw) {
+        if (raw == null) return null;
+        String trimmed = raw.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     @Transactional
@@ -95,8 +118,17 @@ public class ProductService {
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
 
+        String newBarcode = normaliseBarcode(request.getBarcode());
+        if (newBarcode != null
+                && !newBarcode.equals(product.getBarcode())
+                && productRepository.existsByBarcode(newBarcode)) {
+            throw new DuplicateResourceException("Product", "barcode", newBarcode);
+        }
+
         product.setName(request.getName());
+        product.setBarcode(newBarcode);
         product.setPrice(request.getPrice());
+        product.setBuyPrice(request.getBuyPrice());
         product.setQuantity(request.getQuantity());
         product.setAlertThreshold(request.getAlertThreshold());
         product.setCategory(category);

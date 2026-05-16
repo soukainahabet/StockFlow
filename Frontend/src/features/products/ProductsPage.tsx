@@ -1,45 +1,91 @@
-import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Search, Package, AlertTriangle } from "lucide-react";
-import toast from "react-hot-toast";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
-import { Pagination } from "@/components/ui/Pagination";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { productsService, type ProductSearchParams } from "./productsService";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  DataTable,
+  FilterBar,
+  PageHeader,
+  Pagination,
+  SearchInput,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  toastUI,
+  Tooltip,
+  type Column,
+  type SortState,
+} from "@/components/ui";
 import { categoriesService } from "@/features/categories/categoriesService";
-import { ProductForm } from "./ProductForm";
 import { useAuth } from "@/features/auth/AuthContext";
-import { formatCurrency, formatNumber } from "@/utils/format";
 import type { ProductRequest, ProductResponse } from "@/types";
+import { formatCurrency, formatNumber } from "@/utils/format";
+import { ProductForm } from "./ProductForm";
+import { productsService, type ProductSearchParams } from "./productsService";
+
+type StatusFilter = "all" | "ok" | "low" | "out";
+
+function readParams(sp: URLSearchParams) {
+  return {
+    q: sp.get("q") ?? "",
+    category: sp.get("category") ?? "",
+    status: (sp.get("status") as StatusFilter | null) ?? "all",
+    page: Math.max(0, Number(sp.get("page") ?? 0)),
+    sort: sp.get("sort") ?? "",
+  };
+}
 
 export function ProductsPage() {
   const { hasRole } = useAuth();
   const canManage = hasRole("ADMIN");
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
-  const [page, setPage] = useState(0);
-  const [name, setName] = useState("");
-  const [categoryId, setCategoryId] = useState<number | "">("");
-  const [lowStock, setLowStock] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { q, category, status, page, sort } = readParams(searchParams);
+  const sortState: SortState | undefined = useMemo(() => {
+    if (!sort) return undefined;
+    const [key, dir] = sort.split(",");
+    return dir === "asc" || dir === "desc"
+      ? { key, direction: dir }
+      : undefined;
+  }, [sort]);
+
+  const update = (patch: Record<string, string | number | undefined | null>) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(patch)) {
+          if (v === undefined || v === null || v === "" || v === 0)
+            next.delete(k);
+          else next.set(k, String(v));
+        }
+        return next;
+      },
+      { replace: true },
+    );
 
   const params: ProductSearchParams = useMemo(
     () => ({
       page,
-      size: 10,
-      name: name || undefined,
-      categoryId: typeof categoryId === "number" ? categoryId : undefined,
-      lowStock: lowStock || undefined,
+      size: 15,
+      name: q || undefined,
+      categoryId: category ? Number(category) : undefined,
+      lowStock: status === "low" || status === "out" ? true : undefined,
+      sort: sort || undefined,
     }),
-    [page, name, categoryId, lowStock],
+    [page, q, category, status, sort],
   );
 
   const productsQuery = useQuery({
     queryKey: ["products", params],
     queryFn: () => productsService.list(params),
   });
-
   const categoriesQuery = useQuery({
     queryKey: ["categories", "all"],
     queryFn: categoriesService.listAll,
@@ -47,178 +93,304 @@ export function ProductsPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductResponse | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<ProductResponse | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ProductResponse | null>(
+    null,
+  );
 
   const createMut = useMutation({
-    mutationFn: (body: ProductRequest) => productsService.create(body),
+    mutationFn: (b: ProductRequest) => productsService.create(b),
     onSuccess: () => {
-      toast.success("Produit créé");
+      toastUI.success("Produit créé");
       setFormOpen(false);
       void qc.invalidateQueries({ queryKey: ["products"] });
     },
+    onError: () => toastUI.error("Création impossible"),
   });
-
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: ProductRequest }) =>
       productsService.update(id, body),
     onSuccess: () => {
-      toast.success("Produit mis à jour");
+      toastUI.success("Produit mis à jour");
       setFormOpen(false);
       setEditing(null);
       void qc.invalidateQueries({ queryKey: ["products"] });
     },
+    onError: () => toastUI.error("Mise à jour impossible"),
   });
-
   const deleteMut = useMutation({
     mutationFn: (id: number) => productsService.remove(id),
     onSuccess: () => {
-      toast.success("Produit supprimé");
+      toastUI.success("Produit supprimé");
       setConfirmDelete(null);
       void qc.invalidateQueries({ queryKey: ["products"] });
     },
+    onError: () => toastUI.error("Suppression impossible"),
   });
 
   const data = productsQuery.data;
+  const total = data?.totalElements ?? 0;
+  const hasActiveFilters =
+    Boolean(q) || Boolean(category) || status !== "all";
+
+  // Filtrage statut côté client (le backend n'a qu'un flag lowStock)
+  const rows = useMemo(() => {
+    const content = data?.content ?? [];
+    if (status === "out") return content.filter((p) => p.quantity === 0);
+    if (status === "ok") return content.filter((p) => !p.lowStock);
+    return content;
+  }, [data, status]);
+
+  const columns: Column<ProductResponse>[] = [
+    {
+      id: "sku",
+      header: "Réf.",
+      cell: (p) => (
+        <span className="font-mono text-xs text-muted">#{p.id}</span>
+      ),
+      width: "72px",
+      sortKey: "id",
+    },
+    {
+      id: "name",
+      header: "Produit",
+      cell: (p) => (
+        <span className="font-medium text-primary">{p.name}</span>
+      ),
+      sortKey: "name",
+    },
+    {
+      id: "category",
+      header: "Catégorie",
+      cell: (p) => <Badge variant="neutral">{p.categoryName}</Badge>,
+    },
+    {
+      id: "barcode",
+      header: "Code-barres",
+      cell: (p) =>
+        p.barcode ? (
+          <span className="font-mono text-xs text-muted">{p.barcode}</span>
+        ) : (
+          <span className="text-disabled">—</span>
+        ),
+      hideable: true,
+      defaultHidden: true,
+    },
+    {
+      id: "buyPrice",
+      header: "Prix achat",
+      cell: (p) =>
+        p.buyPrice == null ? (
+          <span className="text-disabled">—</span>
+        ) : (
+          <span className="text-muted">{formatCurrency(p.buyPrice)}</span>
+        ),
+      align: "right",
+      hideable: true,
+      defaultHidden: true,
+    },
+    {
+      id: "price",
+      header: "Prix vente",
+      cell: (p) => formatCurrency(p.price),
+      align: "right",
+      sortKey: "price",
+    },
+    {
+      id: "quantity",
+      header: "Stock",
+      cell: (p) => formatNumber(p.quantity),
+      align: "right",
+      sortKey: "quantity",
+    },
+    {
+      id: "threshold",
+      header: "Seuil",
+      cell: (p) => (
+        <span className="text-muted">{formatNumber(p.alertThreshold)}</span>
+      ),
+      align: "right",
+      hideable: true,
+      defaultHidden: true,
+    },
+    {
+      id: "status",
+      header: "Statut",
+      cell: (p) =>
+        p.quantity === 0 ? (
+          <Badge variant="danger" dot>
+            Rupture
+          </Badge>
+        ) : p.lowStock ? (
+          <Badge variant="warning" dot>
+            Faible
+          </Badge>
+        ) : (
+          <Badge variant="success" dot>
+            OK
+          </Badge>
+        ),
+    },
+    ...(canManage
+      ? [
+          {
+            id: "actions",
+            header: "",
+            cell: (p: ProductResponse) => (
+              <div
+                className="inline-flex items-center gap-0.5 justify-end"
+                data-row-stop
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Tooltip content="Modifier">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => {
+                      setEditing(p);
+                      setFormOpen(true);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Supprimer">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setConfirmDelete(p)}
+                    className="text-muted hover:text-danger"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </Tooltip>
+              </div>
+            ),
+            align: "right" as const,
+            compact: true,
+            width: "96px",
+          },
+        ]
+      : []),
+  ];
 
   return (
-    <>
+    <div className="max-w-[1400px] mx-auto space-y-4">
       <PageHeader
         title="Produits"
-        subtitle="Gérez votre catalogue de produits."
+        description="Gérez votre catalogue et vos stocks."
+        meta={
+          total > 0 && (
+            <Badge variant="neutral">{total.toLocaleString("fr-FR")} réf.</Badge>
+          )
+        }
         actions={
           canManage && (
-            <button
-              className="btn-primary"
+            <Button
               onClick={() => {
                 setEditing(null);
                 setFormOpen(true);
               }}
             >
-              <Plus size={16} />
+              <Plus className="h-3.5 w-3.5" />
               Nouveau produit
-            </button>
+            </Button>
           )
         }
       />
 
-      <div className="card p-4 mb-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400" />
-            <input
-              className="input pl-9"
-              placeholder="Rechercher un produit..."
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setPage(0);
-              }}
-            />
-          </div>
-          <select
-            className="input"
-            value={categoryId}
-            onChange={(e) => {
-              setCategoryId(e.target.value === "" ? "" : Number(e.target.value));
-              setPage(0);
-            }}
-          >
-            <option value="">Toutes les catégories</option>
+      <FilterBar
+        onReset={() =>
+          setSearchParams({}, { replace: true })
+        }
+        hasActiveFilters={hasActiveFilters}
+      >
+        <SearchInput
+          key={q}
+          defaultValue={q}
+          onSearch={(v) => update({ q: v, page: 0 })}
+          placeholder="Rechercher un produit…"
+          className="w-full sm:w-72"
+        />
+        <Select
+          value={category || "all"}
+          onValueChange={(v) =>
+            update({ category: v === "all" ? undefined : v, page: 0 })
+          }
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="Catégorie" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes catégories</SelectItem>
             {(categoriesQuery.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <SelectItem key={c.id} value={String(c.id)}>
+                {c.name}
+              </SelectItem>
             ))}
-          </select>
-          <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-secondary-200 bg-white cursor-pointer">
-            <input
-              type="checkbox"
-              checked={lowStock}
-              onChange={(e) => {
-                setLowStock(e.target.checked);
-                setPage(0);
-              }}
-              className="rounded border-secondary-300 text-primary focus:ring-primary"
-            />
-            <span className="text-sm text-secondary-700">Uniquement stock faible</span>
-          </label>
-        </div>
-      </div>
+          </SelectContent>
+        </Select>
+        <Select
+          value={status}
+          onValueChange={(v) =>
+            update({
+              status: v === "all" ? undefined : v,
+              page: 0,
+            })
+          }
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tout statut</SelectItem>
+            <SelectItem value="ok">Stock OK</SelectItem>
+            <SelectItem value="low">Stock faible</SelectItem>
+            <SelectItem value="out">Rupture</SelectItem>
+          </SelectContent>
+        </Select>
+      </FilterBar>
 
-      <div className="card overflow-hidden">
-        {productsQuery.isPending ? (
-          <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-        ) : !data || data.empty ? (
-          <EmptyState icon={Package} title="Aucun produit" description="Ajustez vos filtres ou créez un produit." />
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr>
-                    <th className="table-th">Produit</th>
-                    <th className="table-th">Catégorie</th>
-                    <th className="table-th text-right">Prix</th>
-                    <th className="table-th text-right">Quantité</th>
-                    <th className="table-th text-right">Seuil</th>
-                    <th className="table-th">État</th>
-                    {canManage && <th className="table-th text-right">Actions</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.content.map((p) => (
-                    <tr key={p.id} className="hover:bg-secondary-50/40">
-                      <td className="table-td">
-                        <div className="font-medium text-secondary-900">{p.name}</div>
-                        <div className="text-xs text-secondary-500">#{p.id}</div>
-                      </td>
-                      <td className="table-td">{p.categoryName}</td>
-                      <td className="table-td text-right font-semibold">{formatCurrency(p.price)}</td>
-                      <td className="table-td text-right">{formatNumber(p.quantity)}</td>
-                      <td className="table-td text-right text-secondary-500">{formatNumber(p.alertThreshold)}</td>
-                      <td className="table-td">
-                        {p.lowStock ? (
-                          <span className="badge-error"><AlertTriangle size={12} />Stock faible</span>
-                        ) : (
-                          <span className="badge-success">OK</span>
-                        )}
-                      </td>
-                      {canManage && (
-                        <td className="table-td text-right">
-                          <div className="inline-flex gap-1">
-                            <button
-                              className="btn-ghost p-2"
-                              aria-label="Modifier"
-                              onClick={() => {
-                                setEditing(p);
-                                setFormOpen(true);
-                              }}
-                            >
-                              <Pencil size={16} />
-                            </button>
-                            <button
-                              className="btn-ghost p-2 text-error hover:bg-red-50"
-                              aria-label="Supprimer"
-                              onClick={() => setConfirmDelete(p)}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              page={data.page}
-              totalPages={data.totalPages}
-              totalElements={data.totalElements}
-              size={data.size}
-              onPageChange={setPage}
-            />
-          </>
-        )}
-      </div>
+      <DataTable<ProductResponse>
+        columns={columns}
+        data={rows}
+        getRowId={(r) => r.id}
+        loading={productsQuery.isPending}
+        rowCount={10}
+        sort={sortState}
+        onSortChange={(s) =>
+          update({ sort: s ? `${s.key},${s.direction}` : undefined })
+        }
+        onRowClick={(r) => navigate(`/products/${r.id}`)}
+        emptyTitle="Aucun produit"
+        emptyDescription={
+          hasActiveFilters
+            ? "Ajustez vos filtres."
+            : "Créez votre premier produit pour commencer."
+        }
+        emptyAction={
+          !hasActiveFilters && canManage ? (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Nouveau produit
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {data && data.totalPages > 1 && (
+        <Pagination
+          page={data.page}
+          totalPages={data.totalPages}
+          totalElements={data.totalElements}
+          pageSize={data.size}
+          onPageChange={(p) => update({ page: p })}
+        />
+      )}
 
       <ProductForm
         open={formOpen}
@@ -230,13 +402,16 @@ export function ProductsPage() {
         categories={categoriesQuery.data ?? []}
         submitting={createMut.isPending || updateMut.isPending}
         onSubmit={(body) =>
-          editing ? updateMut.mutateAsync({ id: editing.id, body }) : createMut.mutateAsync(body)
+          editing
+            ? updateMut.mutateAsync({ id: editing.id, body })
+            : createMut.mutateAsync(body)
         }
       />
+
       <ConfirmDialog
         open={Boolean(confirmDelete)}
         title="Supprimer le produit ?"
-        message={`Cette action est irréversible. "${confirmDelete?.name}" sera supprimé.`}
+        message={`"${confirmDelete?.name}" sera supprimé définitivement.`}
         confirmLabel="Supprimer"
         loading={deleteMut.isPending}
         onClose={() => setConfirmDelete(null)}
@@ -244,6 +419,6 @@ export function ProductsPage() {
           if (confirmDelete) deleteMut.mutate(confirmDelete.id);
         }}
       />
-    </>
+    </div>
   );
 }

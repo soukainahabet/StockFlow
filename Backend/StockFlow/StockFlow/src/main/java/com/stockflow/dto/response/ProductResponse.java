@@ -20,8 +20,14 @@ public class ProductResponse {
     @Schema(example = "Coca-Cola 33cl")
     private String name;
 
-    @Schema(example = "1.50")
+    @Schema(example = "5449000000996", description = "Barcode (EAN-13, UPC, Code-128, QR payload) — null if not set")
+    private String barcode;
+
+    @Schema(example = "1.50", description = "Unit sell price")
     private BigDecimal price;
+
+    @Schema(example = "0.80", description = "Purchase / cost price (null on legacy rows)")
+    private BigDecimal buyPrice;
 
     @Schema(example = "100")
     private Integer quantity;
@@ -42,7 +48,9 @@ public class ProductResponse {
         return ProductResponse.builder()
                 .id(product.getId())
                 .name(product.getName())
+                .barcode(product.getBarcode())
                 .price(product.getPrice())
+                .buyPrice(product.getBuyPrice())
                 .quantity(product.getQuantity())
                 .alertThreshold(product.getAlertThreshold())
                 .categoryName(product.getCategory().getName())

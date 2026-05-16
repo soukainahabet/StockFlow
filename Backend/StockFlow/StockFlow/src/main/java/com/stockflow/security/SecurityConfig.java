@@ -113,9 +113,19 @@ public class SecurityConfig {
                             .hasAnyRole(ADMIN, SELLER)
                         .requestMatchers(HttpMethod.DELETE, "/api/ventes/**").hasRole(ADMIN)
 
+                        // --- Invoices (auto-generated, customer info edition, PDF export) ---
+                        .requestMatchers(HttpMethod.GET, "/api/invoices/**")
+                            .hasAnyRole(ADMIN, SELLER, MANAGER)
+                        .requestMatchers(HttpMethod.PUT, "/api/invoices/**")
+                            .hasAnyRole(ADMIN, SELLER)
+
                         // --- Dashboard ---
                         .requestMatchers("/api/dashboard/**")
                             .hasAnyRole(ADMIN, STOCK_MANAGER, SELLER, MANAGER)
+
+                        // --- Analytics (BI: top-products, profit) : ADMIN + MANAGER only ---
+                        .requestMatchers("/api/analytics/**")
+                            .hasAnyRole(ADMIN, MANAGER)
 
                         // --- Profile: any authenticated user ---
                         .requestMatchers("/api/profile/**").authenticated()

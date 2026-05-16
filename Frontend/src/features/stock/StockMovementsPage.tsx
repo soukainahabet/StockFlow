@@ -1,35 +1,74 @@
-import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
-import toast from "react-hot-toast";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Spinner } from "@/components/ui/Spinner";
-import { Pagination } from "@/components/ui/Pagination";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { Modal } from "@/components/ui/Modal";
-import { stockService, type StockSearchParams } from "./stockService";
-import { productsService } from "@/features/products/productsService";
+import { ArrowLeftRight, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  Badge,
+  Button,
+  DataTable,
+  FilterBar,
+  Input,
+  Label,
+  PageHeader,
+  Pagination,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  toastUI,
+  type Column,
+} from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthContext";
+import { productsService } from "@/features/products/productsService";
+import type {
+  StockMovementRequest,
+  StockMovementResponse,
+  StockMovementType,
+} from "@/types";
 import { formatDateTime, formatNumber } from "@/utils/format";
-import type { StockMovementRequest, StockMovementType } from "@/types";
+import { StockMovementForm } from "./StockMovementForm";
+import { stockService, type StockSearchParams } from "./stockService";
 
 export function StockMovementsPage() {
   const { hasRole } = useAuth();
   const canCreate = hasRole("ADMIN", "STOCK_MANAGER");
   const qc = useQueryClient();
 
-  const [page, setPage] = useState(0);
-  const [type, setType] = useState<StockMovementType | "">("");
-  const [productId, setProductId] = useState<number | "">("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = Math.max(0, Number(searchParams.get("page") ?? 0));
+  const type = (searchParams.get("type") ?? "all") as
+    | StockMovementType
+    | "all";
+  const productId = searchParams.get("productId") ?? "all";
+  const startDate = searchParams.get("startDate") ?? "";
+  const endDate = searchParams.get("endDate") ?? "";
+
+  const update = (patch: Record<string, string | number | undefined>) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(patch)) {
+          if (
+            v === undefined ||
+            v === "" ||
+            v === 0 ||
+            v === "all"
+          )
+            next.delete(k);
+          else next.set(k, String(v));
+        }
+        return next;
+      },
+      { replace: true },
+    );
 
   const params: StockSearchParams = useMemo(
     () => ({
       page,
       size: 15,
-      type: (type || undefined) as StockMovementType | undefined,
-      productId: typeof productId === "number" ? productId : undefined,
+      type: type === "all" ? undefined : type,
+      productId: productId === "all" ? undefined : Number(productId),
       startDate: startDate ? `${startDate}T00:00:00` : undefined,
       endDate: endDate ? `${endDate}T23:59:59` : undefined,
     }),
@@ -40,7 +79,6 @@ export function StockMovementsPage() {
     queryKey: ["stock-movements", params],
     queryFn: () => stockService.list(params),
   });
-
   const productsQuery = useQuery({
     queryKey: ["products", "all-for-stock"],
     queryFn: () => productsService.list({ page: 0, size: 500 }),
@@ -48,231 +86,201 @@ export function StockMovementsPage() {
   const products = productsQuery.data?.content ?? [];
 
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState<StockMovementRequest>({ type: "IN", quantity: 1, productId: 0 });
 
   const createMut = useMutation({
     mutationFn: (b: StockMovementRequest) => stockService.create(b),
     onSuccess: () => {
-      toast.success("Mouvement enregistré");
+      toastUI.success("Mouvement enregistré");
       setFormOpen(false);
       void qc.invalidateQueries({ queryKey: ["stock-movements"] });
       void qc.invalidateQueries({ queryKey: ["products"] });
     },
+    onError: () => toastUI.error("Enregistrement impossible"),
   });
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!form.productId || form.quantity <= 0) {
-      toast.error("Sélectionnez un produit et une quantité valide.");
-      return;
-    }
-    createMut.mutate(form);
-  };
-
   const data = movementsQuery.data;
+  const total = data?.totalElements ?? 0;
+  const hasActiveFilters =
+    type !== "all" ||
+    productId !== "all" ||
+    Boolean(startDate) ||
+    Boolean(endDate);
+
+  const columns: Column<StockMovementResponse>[] = [
+    {
+      id: "id",
+      header: "Réf.",
+      cell: (m) => <span className="font-mono text-xs text-muted">#{m.id}</span>,
+      width: "72px",
+    },
+    {
+      id: "date",
+      header: "Date",
+      cell: (m) => (
+        <span className="text-secondary">{formatDateTime(m.date)}</span>
+      ),
+      sortKey: "date",
+      width: "180px",
+    },
+    {
+      id: "type",
+      header: "Type",
+      cell: (m) =>
+        m.type === "IN" ? (
+          <Badge variant="success" dot>
+            Entrée
+          </Badge>
+        ) : (
+          <Badge variant="warning" dot>
+            Sortie
+          </Badge>
+        ),
+      width: "100px",
+    },
+    {
+      id: "product",
+      header: "Produit",
+      cell: (m) => (
+        <span className="font-medium text-primary">{m.productName}</span>
+      ),
+    },
+    {
+      id: "user",
+      header: "Utilisateur",
+      cell: (m) => <span className="text-secondary">{m.userName}</span>,
+      hideable: true,
+    },
+    {
+      id: "quantity",
+      header: "Quantité",
+      cell: (m) => (
+        <span
+          className={cn_quantity_class(m.type)}
+        >
+          {m.type === "IN" ? "+" : "−"}
+          {formatNumber(m.quantity)}
+        </span>
+      ),
+      align: "right",
+      width: "120px",
+    },
+  ];
 
   return (
-    <>
+    <div className="max-w-[1400px] mx-auto space-y-4">
       <PageHeader
         title="Mouvements de stock"
-        subtitle="Historique des entrées et sorties de stock."
+        description="Historique chronologique des entrées et sorties."
+        meta={total > 0 && <Badge variant="neutral">{total}</Badge>}
         actions={
           canCreate && (
-            <button
-              className="btn-primary"
-              onClick={() => {
-                setForm({ type: "IN", quantity: 1, productId: products[0]?.id ?? 0 });
-                setFormOpen(true);
-              }}
-            >
-              <Plus size={16} />
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
               Nouveau mouvement
-            </button>
+            </Button>
           )
         }
       />
 
-      <div className="card p-4 mb-4">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div>
-            <label className="label">Type</label>
-            <select
-              className="input"
-              value={type}
-              onChange={(e) => {
-                setType(e.target.value as StockMovementType | "");
-                setPage(0);
-              }}
-            >
-              <option value="">Tous</option>
-              <option value="IN">Entrée (IN)</option>
-              <option value="OUT">Sortie (OUT)</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Produit</label>
-            <select
-              className="input"
-              value={productId}
-              onChange={(e) => {
-                setProductId(e.target.value === "" ? "" : Number(e.target.value));
-                setPage(0);
-              }}
-            >
-              <option value="">Tous</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Du</label>
-            <input
-              type="date"
-              className="input"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setPage(0);
-              }}
-            />
-          </div>
-          <div>
-            <label className="label">Au</label>
-            <input
-              type="date"
-              className="input"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setPage(0);
-              }}
-            />
-          </div>
+      <FilterBar
+        onReset={() => setSearchParams({}, { replace: true })}
+        hasActiveFilters={hasActiveFilters}
+      >
+        <Select value={type} onValueChange={(v) => update({ type: v, page: 0 })}>
+          <SelectTrigger className="w-36">
+            <SelectValue placeholder="Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous types</SelectItem>
+            <SelectItem value="IN">Entrées</SelectItem>
+            <SelectItem value="OUT">Sorties</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={productId}
+          onValueChange={(v) => update({ productId: v, page: 0 })}
+        >
+          <SelectTrigger className="w-56">
+            <SelectValue placeholder="Produit" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous produits</SelectItem>
+            {products.map((p) => (
+              <SelectItem key={p.id} value={String(p.id)}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="from" className="text-muted whitespace-nowrap">
+            Du
+          </Label>
+          <Input
+            id="from"
+            type="date"
+            className="w-40"
+            value={startDate}
+            onChange={(e) => update({ startDate: e.target.value, page: 0 })}
+          />
+          <Label htmlFor="to" className="text-muted whitespace-nowrap">
+            au
+          </Label>
+          <Input
+            id="to"
+            type="date"
+            className="w-40"
+            value={endDate}
+            onChange={(e) => update({ endDate: e.target.value, page: 0 })}
+          />
         </div>
-      </div>
+      </FilterBar>
 
-      <div className="card overflow-hidden">
-        {movementsQuery.isPending ? (
-          <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-        ) : !data || data.empty ? (
-          <EmptyState icon={ArrowLeftRight} title="Aucun mouvement" />
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr>
-                    <th className="table-th">#</th>
-                    <th className="table-th">Date</th>
-                    <th className="table-th">Type</th>
-                    <th className="table-th">Produit</th>
-                    <th className="table-th">Utilisateur</th>
-                    <th className="table-th text-right">Quantité</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.content.map((m) => (
-                    <tr key={m.id} className="hover:bg-secondary-50/40">
-                      <td className="table-td font-medium">#{m.id}</td>
-                      <td className="table-td">{formatDateTime(m.date)}</td>
-                      <td className="table-td">
-                        {m.type === "IN" ? (
-                          <span className="badge-success"><ArrowDownToLine size={12} />Entrée</span>
-                        ) : (
-                          <span className="badge-warning"><ArrowUpFromLine size={12} />Sortie</span>
-                        )}
-                      </td>
-                      <td className="table-td">{m.productName}</td>
-                      <td className="table-td">{m.userName}</td>
-                      <td className="table-td text-right font-semibold">{formatNumber(m.quantity)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              page={data.page}
-              totalPages={data.totalPages}
-              totalElements={data.totalElements}
-              size={data.size}
-              onPageChange={setPage}
-            />
-          </>
-        )}
-      </div>
+      <DataTable<StockMovementResponse>
+        columns={columns}
+        data={data?.content ?? []}
+        getRowId={(m) => m.id}
+        loading={movementsQuery.isPending}
+        rowCount={10}
+        emptyTitle="Aucun mouvement"
+        emptyDescription={
+          hasActiveFilters
+            ? "Ajustez vos filtres."
+            : "Les mouvements de stock apparaîtront ici."
+        }
+        emptyAction={
+          !hasActiveFilters && canCreate ? (
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Nouveau mouvement
+            </Button>
+          ) : undefined
+        }
+      />
 
-      <Modal
+      {data && data.totalPages > 1 && (
+        <Pagination
+          page={data.page}
+          totalPages={data.totalPages}
+          totalElements={data.totalElements}
+          pageSize={data.size}
+          onPageChange={(p) => update({ page: p })}
+        />
+      )}
+
+      <StockMovementForm
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        title="Nouveau mouvement de stock"
-        size="sm"
-        footer={
-          <>
-            <button className="btn-secondary" onClick={() => setFormOpen(false)}>Annuler</button>
-            <button type="submit" form="stock-form" className="btn-primary" disabled={createMut.isPending}>
-              {createMut.isPending ? "..." : "Enregistrer"}
-            </button>
-          </>
-        }
-      >
-        <form id="stock-form" onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="label">Type</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, type: "IN" })}
-                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                  form.type === "IN"
-                    ? "border-success bg-green-50 text-green-700"
-                    : "border-secondary-200 text-secondary-600 hover:bg-secondary-50"
-                }`}
-              >
-                <ArrowDownToLine size={15} />
-                Entrée (IN)
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, type: "OUT" })}
-                className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                  form.type === "OUT"
-                    ? "border-warning bg-amber-50 text-amber-700"
-                    : "border-secondary-200 text-secondary-600 hover:bg-secondary-50"
-                }`}
-              >
-                <ArrowUpFromLine size={15} />
-                Sortie (OUT)
-              </button>
-            </div>
-          </div>
-          <div>
-            <label className="label">Produit</label>
-            <select
-              className="input"
-              required
-              value={form.productId || ""}
-              onChange={(e) => setForm({ ...form, productId: Number(e.target.value) })}
-            >
-              <option value="" disabled>Sélectionner...</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} (stock: {p.quantity})</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Quantité</label>
-            <input
-              type="number"
-              min="1"
-              required
-              className="input"
-              value={form.quantity}
-              onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
-            />
-          </div>
-        </form>
-      </Modal>
-    </>
+        products={products}
+        submitting={createMut.isPending}
+        onSubmit={(body) => createMut.mutateAsync(body)}
+      />
+    </div>
   );
+}
+
+function cn_quantity_class(type: StockMovementType): string {
+  return type === "IN"
+    ? "font-medium text-success-soft-fg tabular-nums"
+    : "font-medium text-warning-soft-fg tabular-nums";
 }

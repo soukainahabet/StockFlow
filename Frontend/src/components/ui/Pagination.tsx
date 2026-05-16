@@ -1,81 +1,140 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import clsx from "clsx";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { Button } from "./Button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./Select";
 
-interface Props {
+interface PaginationProps {
+  /** Index 0-based (compatible avec Spring Data `Page.number`). */
   page: number;
   totalPages: number;
   totalElements: number;
-  size: number;
+  /** Taille de page courante. Accepte `size` (legacy) ou `pageSize`. */
+  size?: number;
+  pageSize?: number;
   onPageChange: (page: number) => void;
+  /** Si fourni, expose un sélecteur de taille de page. */
+  onPageSizeChange?: (size: number) => void;
+  pageSizeOptions?: number[];
+  className?: string;
 }
 
-export function Pagination({ page, totalPages, totalElements, size, onPageChange }: Props) {
-  if (totalPages <= 0) return null;
-
-  const start = totalElements === 0 ? 0 : page * size + 1;
-  const end = Math.min((page + 1) * size, totalElements);
-
-  const pages: number[] = [];
-  const window = 2;
-  for (let i = Math.max(0, page - window); i <= Math.min(totalPages - 1, page + window); i++) {
-    pages.push(i);
+export function Pagination({
+  page,
+  totalPages,
+  totalElements,
+  size,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = [10, 20, 50, 100],
+  className,
+}: PaginationProps) {
+  const ps = pageSize ?? size ?? 20;
+  if (totalPages <= 0 || totalElements === 0) {
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-between px-3 py-2 text-xs text-muted",
+          className,
+        )}
+      >
+        <span>Aucun résultat</span>
+      </div>
+    );
   }
 
+  const start = page * ps + 1;
+  const end = Math.min((page + 1) * ps, totalElements);
+  const isFirst = page <= 0;
+  const isLast = page >= totalPages - 1;
+
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3 border-t border-secondary-100 bg-white rounded-b-xl text-sm">
-      <p className="text-secondary-600">
-        {totalElements > 0
-          ? <>Affichage <b>{start}</b>–<b>{end}</b> sur <b>{totalElements}</b></>
-          : "Aucun résultat"}
+    <div
+      className={cn(
+        "flex flex-col gap-3 px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
+        "text-xs text-muted tabular-nums",
+        className,
+      )}
+    >
+      <p>
+        <span className="text-secondary font-medium">{start}</span>
+        <span className="mx-1">–</span>
+        <span className="text-secondary font-medium">{end}</span>
+        <span className="mx-1.5">sur</span>
+        <span className="text-secondary font-medium">{totalElements}</span>
       </p>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          className="btn-ghost p-2"
-          onClick={() => onPageChange(page - 1)}
-          disabled={page <= 0}
-          aria-label="Page précédente"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        {pages[0]! > 0 && (
-          <>
-            <button className="btn-ghost px-3 py-1.5" onClick={() => onPageChange(0)}>1</button>
-            {pages[0]! > 1 && <span className="px-1 text-secondary-400">…</span>}
-          </>
+
+      <div className="flex items-center gap-2">
+        {onPageSizeChange && (
+          <label className="flex items-center gap-2 mr-2">
+            <span className="hidden sm:inline">Par page</span>
+            <Select
+              value={String(ps)}
+              onValueChange={(v) => onPageSizeChange(Number(v))}
+            >
+              <SelectTrigger className="h-7 w-auto text-xs px-2 py-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((opt) => (
+                  <SelectItem key={opt} value={String(opt)}>
+                    {opt}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
         )}
-        {pages.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => onPageChange(p)}
-            className={clsx(
-              "px-3 py-1.5 rounded-lg text-sm font-medium",
-              p === page ? "bg-primary text-white" : "text-secondary-700 hover:bg-secondary-100",
-            )}
+
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={isFirst}
+            onClick={() => onPageChange(0)}
+            aria-label="Première page"
           >
-            {p + 1}
-          </button>
-        ))}
-        {pages[pages.length - 1]! < totalPages - 1 && (
-          <>
-            {pages[pages.length - 1]! < totalPages - 2 && (
-              <span className="px-1 text-secondary-400">…</span>
-            )}
-            <button className="btn-ghost px-3 py-1.5" onClick={() => onPageChange(totalPages - 1)}>
-              {totalPages}
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          className="btn-ghost p-2"
-          onClick={() => onPageChange(page + 1)}
-          disabled={page >= totalPages - 1}
-          aria-label="Page suivante"
-        >
-          <ChevronRight size={16} />
-        </button>
+            <ChevronsLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={isFirst}
+            onClick={() => onPageChange(page - 1)}
+            aria-label="Page précédente"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <span className="px-2 text-secondary">
+            <span className="font-medium">{page + 1}</span>
+            <span className="mx-1 text-disabled">/</span>
+            <span>{totalPages}</span>
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={isLast}
+            onClick={() => onPageChange(page + 1)}
+            aria-label="Page suivante"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={isLast}
+            onClick={() => onPageChange(totalPages - 1)}
+            aria-label="Dernière page"
+          >
+            <ChevronsRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     </div>
   );
