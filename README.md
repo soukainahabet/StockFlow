@@ -15,6 +15,7 @@ Application SaaS de gestion de stock et de ventes — backend Spring Boot (REST 
 - [Comptes de démonstration](#comptes-de-démonstration-profil-dev)
 - [Démarrage rapide](#démarrage-rapide)
 - [Conventions de code](#conventions-de-code)
+- [Historique des modifications](#historique-des-modifications)
 - [Reste à faire](#reste-à-faire)
 
 ---
@@ -78,8 +79,11 @@ StockApp/
     │   └── roles/
     ├── lib/                # cn, theme, useDebouncedValue
     ├── routes/             # AppRoutes, PrivateRoute, RoleGuard
-    ├── services/           # api (axios), authService, dashboardService,
-    │                       # invoicesService, analyticsService
+    ├── services/           # services transverses : api (axios), authService,
+    │                       # dashboardService, invoicesService, analyticsService
+    │                       # (services métier locaux : Frontend/src/features/<feature>/<feature>Service.ts —
+    │                       #  productsService, categoriesService, ventesService, stockService,
+    │                       #  usersService, rolesService)
     ├── types/              # Types TypeScript partagés
     └── utils/              # format (currency, date), storage
 ```
@@ -403,6 +407,66 @@ npm run dev
 - **Toasts** : utiliser `toastUI.*` (wrapper custom) plutôt que `toast.*` direct — design en tokens, dark-mode-compatible.
 - **PDF download** : `axios.get(url, { responseType: 'blob' })` + `URL.createObjectURL(blob)` + `<a download>` synthétique + `URL.revokeObjectURL`.
 - **Print** : `window.print()` + utilities Tailwind `print:hidden` / `print:bg-white` + règles `@media print` globales dans `index.css` qui masquent sidebar/header.
+
+---
+
+## Historique des modifications
+
+Les évolutions majeures du projet, dans l'ordre chronologique.
+
+### v0.4 — 2026-05-16 — Business Intelligence, factures et scanner
+
+**Backend**
+- Nouvelle entité `Invoice` (table `invoices`, lien 1↔1 vers `Vente`) auto-créée dans `VenteService.createVente`. Numérotation `INV-YYYY-NNNNN`.
+- Service `InvoicePdfGenerator` (OpenPDF 1.3.30) — génération PDF A4 stylé (header brand, blocs Émetteur/Client, lignes, total accent-bordered, footer).
+- Nouveau `InvoiceController` : `GET /api/invoices`, `GET /api/invoices/{id}`, `PUT /api/invoices/{id}` (info client), `GET /api/invoices/{id}/pdf`.
+- Nouveau champ `Product.barcode` (unique, indexed, ≤ 64 chars) + endpoint `GET /api/products/by-barcode/{barcode}` (tous rôles).
+- Nouveau champ `Product.buyPrice` (BigDecimal, nullable) pour les calculs de marge / bénéfice.
+- Nouveau `AnalyticsController` (ADMIN + MANAGER) :
+  - `GET /api/analytics/top-products?limit=10` → `TopProductDto[]`
+  - `GET /api/analytics/profit-products?limit=10` → `ProfitSummaryDto` (items + totaux)
+- Requêtes en single GROUP BY sur `LigneVenteRepository` (`findTopProductsWithStats`, `findProfitByProduct`) — pas de N+1.
+- Dépendance ajoutée : `com.github.librepdf:openpdf:1.3.30` dans `pom.xml`.
+
+**Frontend**
+- Nouveau composant `BarcodeScanner` (`@yudiel/react-qr-scanner` 2.1) — Dialog plein écran, caméra arrière, formats QR + EAN-13/8, UPC-A/E, Code-128/39/93, Codabar, ITF, fallback saisie manuelle.
+- Intégration scanner dans `ProductForm` (lier un code à un produit) et `VenteCreatePage` (scan → recherche → ajout/incrémentation auto au panier, avec garde de stock).
+- Nouvelles pages `/invoices` (liste filtrable) et `/invoices/:id` (aperçu facture + boutons Imprimer / Télécharger PDF / Modifier client). Print CSS dans `index.css`.
+- Page `/reports` (ADMIN + MANAGER) enrichie :
+  - 5e KPI **Bénéfice total** avec delta N vs N-1
+  - Widget **Meilleures ventes** (BarChart horizontal, tous temps)
+  - Table **Bénéfice par produit** avec Badge marge sémantique (≥30% success / ≥10% warning / sinon danger)
+  - Export CSV UTF-8 + BOM Excel
+- `ProductForm` : marge live (€ + %) et flag `invalid` sur le prix de vente si ≤ buyPrice. `ProductDetailPage` : affichage buyPrice + marge unitaire. `ProductsPage` : colonne **Prix achat** masquable (défaut caché).
+- Nouveau service `analyticsService.ts` (transverse) et `invoicesService.ts`.
+
+### v0.3 — 2026-04-27 — RBAC re-hardened
+
+- Centralisation complète des règles dans `SecurityConfig` (`hasRole` / `hasAnyRole`).
+- Retrait de `@PreAuthorize` parasites sur `StockMovementController` (avait silencieusement bloqué STOCK_MANAGER sur les entrées/sorties).
+- `RoleService.SYSTEM_ROLES` : protection renommage/suppression d'`ADMIN`, `STOCK_MANAGER`, `SELLER`, `MANAGER`, `USER`.
+- Frontend miroir : `Sidebar.tsx` (filtre par item), `AppRoutes.tsx` (`RoleGuard`), gates `canManage` / `canCreate` / `canDelete` / `canMove` côté pages.
+
+### v0.2 — 2026-04-18 — Modern SaaS redesign
+
+Commit `13bd553` — `feat(stockflow): modern SaaS redesign with new UI system, layout improvements, dashboard enhancements, and core feature integrations`.
+
+- **Design system "Operator"** : ~20 composants Radix + tokens CSS vars + dark mode first-class (`darkMode: 'class'`).
+- Layout `DashboardLayout` + `Sidebar` filtrée par rôle + `Header` (theme toggle, user menu) + `SearchPalette` (stub).
+- Pages refondues : Dashboard (StatCards + chart CA 30j + top produits), Produits, Catégories, Mouvements de stock, Ventes, Utilisateurs, Rôles.
+- `DataTable<T>` générique (tri serveur, colonnes masquables, sticky header, sélection multi), `Pagination` (compteur central, page size), `FilterBar` (URL-sync), `ConfirmDialog`, `Drawer`.
+- Toast custom (`toastUI`) en tokens, compatible dark-mode, branché sur les erreurs Axios.
+- React Query 5 + invalidation après chaque mutation.
+- Comptes seedés en dev : `admin@stockflow.com`, `stock@stockflow.com`, `seller@stockflow.com`, `manager@stockflow.com`.
+- Module ventes unifié sur `Vente` (suppression définitive de `Sale` / `SaleItem`).
+- Profils Spring `dev` (Swagger, CORS `*`, seeding) et `prod` (Swagger off, CORS strict, vars d'env obligatoires).
+- `PageResponse<Dto>` partout — jamais d'`org.springframework.data.domain.Page` exposé.
+
+### v0.1 — Initial commits
+
+- `40906a3` — Ajout du frontend React initial.
+- `ffe86ca` — Update backend.
+- `58b824f` — Initial commit.
 
 ---
 
