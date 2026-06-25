@@ -1,5 +1,6 @@
 package com.stockflow.controller;
 
+import com.stockflow.dto.request.UserCreateRequest;
 import com.stockflow.dto.request.UserUpdateRequest;
 import com.stockflow.dto.response.ApiResponse;
 import com.stockflow.dto.response.PageResponse;
@@ -15,6 +16,7 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -43,6 +45,17 @@ public class UserController {
     public ResponseEntity<ApiResponse<UserResponse>> getUserById(@PathVariable Long id) {
         UserResponse user = userService.getUserById(id);
         return ResponseEntity.ok(ApiResponse.success(user));
+    }
+
+    @PostMapping
+    @Operation(summary = "Create a user (any assignable role: SYSTEM or active CUSTOM)")
+    public ResponseEntity<ApiResponse<UserResponse>> createUser(
+            @Valid @RequestBody UserCreateRequest request) {
+        UserResponse user = userService.createUser(request);
+        return new ResponseEntity<>(
+                ApiResponse.success("User created successfully", user),
+                HttpStatus.CREATED
+        );
     }
 
     @PutMapping("/{id}")

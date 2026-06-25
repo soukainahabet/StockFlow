@@ -1,0 +1,146 @@
+@startuml StockFlow_UseCase
+left to right direction
+
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam nodesep 8
+skinparam ranksep 22
+skinparam ArrowColor #555555
+skinparam ActorBorderColor #333333
+skinparam UsecaseBorderColor #555555
+skinparam UsecaseBackgroundColor #F7F7F7
+skinparam defaultTextAlignment center
+skinparam wrapWidth 150
+
+' ============ ACTEURS ============
+actor "User" as U
+actor "ADMIN" as A
+actor "STOCK_MANAGER" as SM
+actor "SELLER" as SL
+actor "MANAGER" as MG
+
+A     --|> U
+SM    --|> U
+SL    --|> U
+MG    --|> U
+
+rectangle "StockFlow System" {
+
+  ' ---------- RANGÉE 1 ----------
+  together {
+    package "Authentification" {
+      usecase "S'authentifier\n(Login)"        as UC_login
+      usecase "Se déconnecter\n(Logout)"       as UC_logout
+      usecase "Vérifier les permissions\nselon le rôle" as UC_perm
+      usecase "Gérer la session\nutilisateur"  as UC_session
+    }
+    package "Administration" {
+      usecase "Gérer les\nutilisateurs"   as UC_users
+      usecase "Gérer les\nrôles"          as UC_roles
+      usecase "Gérer les\npermissions"    as UC_acl
+    }
+    package "Catalogue" {
+      usecase "Gérer les\ncatégories" as UC_cat
+      usecase "Gérer les\nproduits"   as UC_prod
+      usecase "Consulter le\ncatalogue" as UC_viewcat
+    }
+  }
+
+  ' ---------- RANGÉE 2 ----------
+  together {
+    package "Stock" {
+      usecase "Ajouter une\nentrée stock" as UC_in
+      usecase "Ajouter une\nsortie stock" as UC_out
+      usecase "Consulter\nle stock"       as UC_viewstock
+      usecase "Gérer les alertes\nstock faible" as UC_alert
+    }
+    package "Ventes" {
+      usecase "Créer une\nvente"            as UC_sale
+      usecase "Consulter toutes\nles ventes" as UC_allsales
+      usecase "Consulter ses\npropres ventes" as UC_ownsales
+      usecase "Scanner un\ncode-barres"     as UC_scan
+    }
+  }
+
+  ' ---------- RANGÉE 3 ----------
+  together {
+    package "Factures" {
+      usecase "Générer une\nfacture"        as UC_genfac
+      usecase "Consulter une\nfacture"      as UC_viewfac
+      usecase "Télécharger une\nfacture PDF" as UC_pdf
+    }
+    package "Pilotage" {
+      usecase "Voir les statistiques\n(dashboard)" as UC_dash
+      usecase "Suivre l'activité\n(rapports)"      as UC_reports
+    }
+    package "Notifications" {
+      usecase "Consulter\nses alertes"      as UC_myalert
+      usecase "Recevoir des\nnotifications" as UC_notif
+    }
+  }
+}
+
+' ============ AUTHENTIFICATION (commun à tous) ============
+U  --> UC_login
+U  --> UC_logout
+UC_login  ..> UC_perm    : <<include>>
+UC_login  ..> UC_session : <<include>>
+
+' ============ ADMIN ============
+A --> UC_users
+A --> UC_roles
+A --> UC_acl
+UC_users ..> UC_perm : <<include>>
+UC_roles ..> UC_perm : <<include>>
+UC_acl   ..> UC_perm : <<include>>
+
+' ============ CATALOGUE ============
+A  --> UC_cat
+A  --> UC_prod
+U  --> UC_viewcat
+
+' ============ STOCK ============
+SM --> UC_in
+SM --> UC_out
+U  --> UC_viewstock
+UC_out ..> UC_alert : <<extend>>
+
+' ============ VENTES ============
+SL --> UC_sale
+SL --> UC_ownsales
+A  --> UC_allsales
+UC_sale ..> UC_genfac : <<include>>
+UC_sale ..> UC_scan   : <<extend>>
+
+' ============ FACTURES (ADMIN + MANAGER ; pas SELLER) ============
+A  --> UC_viewfac
+MG --> UC_viewfac
+UC_pdf ..> UC_viewfac : <<include>>
+
+' ============ PILOTAGE ============
+MG --> UC_dash
+MG --> UC_reports
+
+' ============ NOTIFICATIONS ============
+U  --> UC_myalert
+UC_myalert ..> UC_notif : <<include>>
+UC_alert   ..> UC_notif : <<include>>
+
+' ============ NOTES MÉTIER ============
+note right of UC_perm
+  Vérification effectuée à chaque
+  appel API via le filtre JWT + RBAC.
+end note
+
+note bottom of UC_ownsales
+  SELLER ne voit que les ventes
+  dont il est l'auteur (filtre serveur).
+end note
+
+note right of UC_viewfac
+  Factures réservées à ADMIN et
+  MANAGER. SELLER n'y accède pas.
+end note
+
+@enduml

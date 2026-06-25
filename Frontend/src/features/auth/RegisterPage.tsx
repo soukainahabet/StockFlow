@@ -1,4 +1,5 @@
-import { AlertCircle, Boxes } from "lucide-react";
+import { AlertCircle } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/Select";
+import { landingRouteForRole } from "@/routes/landing";
 import type { Role } from "@/types";
 import { useAuth } from "./AuthContext";
 
@@ -39,8 +41,8 @@ export function RegisterPage() {
     }
     setSubmitting(true);
     try {
-      await register({ name, email, password, roleName });
-      navigate("/dashboard", { replace: true });
+      const stored = await register({ name, email, password, roleName });
+      navigate(landingRouteForRole(stored.role), { replace: true });
     } catch {
       setError("Inscription impossible. Vérifiez vos informations.");
     } finally {
@@ -51,16 +53,8 @@ export function RegisterPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-app px-4 py-12">
       <div className="w-full max-w-sm">
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <span
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-fg"
-            aria-hidden="true"
-          >
-            <Boxes className="h-4 w-4" strokeWidth={2.25} />
-          </span>
-          <span className="text-lg font-semibold text-primary tracking-tight">
-            StockFlow
-          </span>
+        <div className="flex justify-center mb-8">
+          <Logo size="xl" />
         </div>
 
         <div className="rounded-lg border border-default bg-surface p-6 shadow-subtle">

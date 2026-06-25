@@ -22,15 +22,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class StockMovementService {
 
+    private static final Set<String> LOW_STOCK_AUDIENCE = Set.of("ADMIN", "MANAGER", "STOCK_MANAGER");
+
     private final StockMovementRepository stockMovementRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public PageResponse<StockMovementResponse> search(Long productId,
                                                       Long userId,
@@ -63,31 +67,64 @@ public class StockMovementService {
 
         User currentUser = getCurrentUser();
 
+        int before = product.getQuantity();
         if (request.getType() == StockMovementType.IN) {
-            product.setQuantity(product.getQuantity() + request.getQuantity());
+            product.setQuantity(before + request.getQuantity());
         } else if (request.getType() == StockMovementType.OUT) {
-            if (product.getQuantity() < request.getQuantity()) {
+            if (before < request.getQuantity()) {
                 throw new InsufficientStockException(
                         product.getName(),
-                        product.getQuantity(),
+                        before,
                         request.getQuantity()
                 );
             }
-            product.setQuantity(product.getQuantity() - request.getQuantity());
+            product.setQuantity(before - request.getQuantity());
         }
 
         productRepository.save(product);
+
+        if (request.getType() == StockMovementType.OUT
+                && product.getQuantity() <= product.getAlertThreshold()
+                && before > product.getAlertThreshold()) {
+            notificationService.notifyByRoles(
+                    LOW_STOCK_AUDIENCE,
+                    com.stockflow.model.NotificationType.LOW_STOCK,
+                    "Stock bas — " + product.getName(),
+                    String.format("Le stock est à %d (seuil d'alerte : %d). Réapprovisionnement recommandé.",
+                            product.getQuantity(), product.getAlertThreshold()),
+                    "/products/" + product.getId()
+            );
+        }
 
         StockMovement movement = StockMovement.builder()
                 .type(request.getType())
                 .quantity(request.getQuantity())
                 .date(LocalDateTime.now())
+                .reason(request.getReason())
                 .product(product)
                 .user(currentUser)
                 .build();
 
         movement = stockMovementRepository.save(movement);
         return StockMovementResponse.fromEntity(movement);
+    }
+
+    /**
+     * Records an internal movement (no quantity mutation on the product — caller is responsible).
+     * Used for system-generated entries such as the initial stock movement on product creation,
+     * where the product entity is built with the right quantity in the same transaction.
+     */
+    @Transactional
+    public StockMovement recordInternal(Product product, StockMovementType type, int quantity, String reason, User user) {
+        StockMovement movement = StockMovement.builder()
+                .type(type)
+                .quantity(quantity)
+                .date(LocalDateTime.now())
+                .reason(reason)
+                .product(product)
+                .user(user)
+                .build();
+        return stockMovementRepository.save(movement);
     }
 
     private User getCurrentUser() {

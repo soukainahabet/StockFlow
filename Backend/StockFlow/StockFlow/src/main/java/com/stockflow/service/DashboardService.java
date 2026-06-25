@@ -1,7 +1,9 @@
 package com.stockflow.service;
 
+import com.stockflow.dto.response.DashboardStatsResponse;
 import com.stockflow.dto.response.ProductResponse;
 import com.stockflow.dto.response.VenteResponse;
+import com.stockflow.model.Product;
 import com.stockflow.repository.LigneVenteRepository;
 import com.stockflow.repository.ProductRepository;
 import com.stockflow.repository.VenteRepository;
@@ -26,6 +28,31 @@ public class DashboardService {
     private final VenteRepository venteRepository;
     private final LigneVenteRepository ligneVenteRepository;
     private final ProductRepository productRepository;
+
+    /**
+     * Single-shot KPI bundle for the home dashboard.
+     * Revenue windows are rolling from {@code now} — {@code last30DaysRevenue} is
+     * {@code [now-30d, now]}, NOT the calendar month-to-date.
+     */
+    public DashboardStatsResponse getStats() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+        LocalDateTime sevenDaysAgo = now.minusDays(7);
+        LocalDateTime thirtyDaysAgo = now.minusDays(30);
+
+        List<Product> lowStock = productRepository.findLowStockProductsOrderByQuantity();
+        List<ProductResponse> lowStockDtos = lowStock.stream()
+                .map(ProductResponse::fromEntity)
+                .toList();
+
+        return DashboardStatsResponse.builder()
+                .todayRevenue(zeroIfNull(venteRepository.getTotalVentesSince(startOfDay)))
+                .last7DaysRevenue(zeroIfNull(venteRepository.getTotalVentesSince(sevenDaysAgo)))
+                .last30DaysRevenue(zeroIfNull(venteRepository.getTotalVentesSince(thirtyDaysAgo)))
+                .lowStockCount(lowStock.size())
+                .lowStockProducts(lowStockDtos)
+                .build();
+    }
 
     public Map<String, Object> getTotalVentes() {
         LocalDateTime now = LocalDateTime.now();

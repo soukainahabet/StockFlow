@@ -20,6 +20,8 @@ interface AuthContextValue {
   register: (body: RegisterRequest) => Promise<StoredUser>;
   logout: () => void;
   hasRole: (...roles: Role[]) => boolean;
+  /** True if the user inherits at least one of the given permission codes. */
+  hasPermission: (...codes: string[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -53,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: me.name,
           email: me.email,
           role: me.role,
+          permissions: me.permissions ?? [],
         };
         userStorage.set(stored);
         setUser(stored);
@@ -70,7 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (body: LoginRequest) => {
     const res = await authService.login(body);
     tokenStorage.set(res.token);
-    const stored: StoredUser = { id: res.id, name: res.name, email: res.email, role: res.role };
+    const stored: StoredUser = {
+      id: res.id,
+      name: res.name,
+      email: res.email,
+      role: res.role,
+      permissions: res.permissions ?? [],
+    };
     userStorage.set(stored);
     setUser(stored);
     return stored;
@@ -79,7 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(async (body: RegisterRequest) => {
     const res = await authService.register(body);
     tokenStorage.set(res.token);
-    const stored: StoredUser = { id: res.id, name: res.name, email: res.email, role: res.role };
+    const stored: StoredUser = {
+      id: res.id,
+      name: res.name,
+      email: res.email,
+      role: res.role,
+      permissions: res.permissions ?? [],
+    };
     userStorage.set(stored);
     setUser(stored);
     return stored;
@@ -94,6 +109,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user],
   );
 
+  const hasPermission = useCallback(
+    (...codes: string[]) => {
+      if (!user) return false;
+      if (codes.length === 0) return true;
+      const owned = user.permissions ?? [];
+      return codes.some((c) => owned.includes(c));
+    },
+    [user],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -103,8 +128,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       hasRole,
+      hasPermission,
     }),
-    [user, isInitializing, login, register, logout, hasRole],
+    [user, isInitializing, login, register, logout, hasRole, hasPermission],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

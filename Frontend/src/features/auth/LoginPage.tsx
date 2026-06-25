@@ -1,10 +1,12 @@
-import { AlertCircle, Boxes, ChevronDown } from "lucide-react";
+import { AlertCircle, ChevronDown } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { cn } from "@/lib/cn";
+import { landingRouteForRole } from "@/routes/landing";
 import { useAuth } from "./AuthContext";
 
 interface LocationState {
@@ -19,7 +21,7 @@ const DEMO_ACCOUNTS = [
 ];
 
 export function LoginPage() {
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
@@ -29,7 +31,7 @@ export function LoginPage() {
   const [demoOpen, setDemoOpen] = useState(false);
 
   if (isAuthenticated) {
-    navigate("/dashboard", { replace: true });
+    navigate(landingRouteForRole(user?.role), { replace: true });
   }
 
   const onSubmit = async (e: FormEvent) => {
@@ -37,9 +39,10 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login({ email, password });
+      const stored = await login({ email, password });
       const from =
-        (location.state as LocationState | null)?.from?.pathname ?? "/dashboard";
+        (location.state as LocationState | null)?.from?.pathname ??
+        landingRouteForRole(stored.role);
       navigate(from, { replace: true });
     } catch {
       setError(
@@ -61,17 +64,9 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-app px-4 py-12">
       <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <span
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-fg"
-            aria-hidden="true"
-          >
-            <Boxes className="h-4 w-4" strokeWidth={2.25} />
-          </span>
-          <span className="text-lg font-semibold text-primary tracking-tight">
-            StockFlow
-          </span>
+        {/* Brand */}
+        <div className="flex justify-center mb-8">
+          <Logo size="xl" />
         </div>
 
         {/* Card */}

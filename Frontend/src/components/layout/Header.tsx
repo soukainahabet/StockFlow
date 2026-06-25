@@ -1,5 +1,6 @@
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { Breadcrumb } from "./Breadcrumb";
 import { SearchPalette } from "./SearchPalette";
 import { ThemeToggle } from "./ThemeToggle";
@@ -28,6 +29,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       <div className="flex items-center gap-1.5">
         <SearchPalette />
+        <NotificationBell />
         <ThemeToggle />
         <UserMenu />
       </div>

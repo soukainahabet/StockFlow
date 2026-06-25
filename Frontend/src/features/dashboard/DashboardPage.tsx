@@ -82,13 +82,11 @@ export function DashboardPage() {
   const { user } = useAuth();
   const firstName = user?.name?.split(" ")[0];
 
-  const totalsQuery = useQuery({
-    queryKey: ["dashboard", "totals"],
-    queryFn: dashboardService.getTotals,
-  });
-  const lowStockQuery = useQuery({
-    queryKey: ["dashboard", "lowStock"],
-    queryFn: dashboardService.getLowStock,
+  const statsQuery = useQuery({
+    queryKey: ["dashboard", "stats"],
+    queryFn: dashboardService.getStats,
+    // Stale very quickly so a sale or stock-mvt elsewhere refreshes the cards on focus.
+    staleTime: 15_000,
   });
   const topProductsQuery = useQuery({
     queryKey: ["dashboard", "topProducts"],
@@ -99,16 +97,12 @@ export function DashboardPage() {
     queryFn: () => ventesService.recent(30),
   });
 
-  const totals = totalsQuery.data;
-  const lowStock = lowStockQuery.data ?? [];
+  const stats = statsQuery.data;
+  const lowStock = stats?.lowStockProducts ?? [];
   const topProducts = topProductsQuery.data ?? [];
   const recent = recentQuery.data ?? [];
 
-  const isLoading =
-    totalsQuery.isPending ||
-    lowStockQuery.isPending ||
-    topProductsQuery.isPending ||
-    recentQuery.isPending;
+  const isStatsLoading = statsQuery.isPending;
 
   const dailySeries = useMemo(() => aggregateByDay(recent), [recent]);
 
@@ -123,32 +117,37 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           label="CA du jour"
-          value={formatCurrency(totals?.today ?? 0)}
+          value={formatCurrency(stats?.todayRevenue ?? 0)}
           icon={Euro}
-          loading={isLoading}
+          loading={isStatsLoading}
         />
         <StatCard
           label="CA 7 jours"
-          value={formatCurrency(totals?.week ?? 0)}
+          value={formatCurrency(stats?.last7DaysRevenue ?? 0)}
           icon={CalendarDays}
-          loading={isLoading}
+          loading={isStatsLoading}
         />
         <StatCard
           label="CA 30 jours"
-          value={formatCurrency(totals?.month ?? 0)}
+          value={formatCurrency(stats?.last30DaysRevenue ?? 0)}
           icon={TrendingUp}
-          loading={isLoading}
+          loading={isStatsLoading}
         />
         <StatCard
           label="Alertes stock"
-          value={lowStockQuery.isPending ? "—" : String(lowStock.length)}
+          value={isStatsLoading ? "—" : String(stats?.lowStockCount ?? 0)}
           delta={
-            lowStock.length > 0
-              ? { value: lowStock.length, tone: "warning", isPercent: false, label: "produit(s) sous seuil" }
+            (stats?.lowStockCount ?? 0) > 0
+              ? {
+                  value: stats?.lowStockCount ?? 0,
+                  tone: "warning",
+                  isPercent: false,
+                  label: "produit(s) sous seuil",
+                }
               : undefined
           }
           icon={AlertTriangle}
-          loading={lowStockQuery.isPending}
+          loading={isStatsLoading}
         />
       </div>
 
@@ -322,7 +321,7 @@ export function DashboardPage() {
           </CardHeader>
           <LowStockList
             products={lowStock.slice(0, 6)}
-            loading={lowStockQuery.isPending}
+            loading={isStatsLoading}
           />
         </Card>
       </div>

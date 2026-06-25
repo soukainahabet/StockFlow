@@ -1,6 +1,7 @@
 import { api, unwrap } from "./api";
 import type {
   ApiResponse,
+  DashboardStats,
   DashboardSummary,
   DashboardTotals,
   ProductResponse,
@@ -14,6 +15,10 @@ interface TopProduct {
 }
 
 export const dashboardService = {
+  /** Compact KPI bundle for the home dashboard (revenue windows + low stock). */
+  getStats: () =>
+    unwrap<DashboardStats>(api.get<ApiResponse<DashboardStats>>("/api/dashboard/stats")),
+
   getTotals: () =>
     unwrap<DashboardTotals>(api.get<ApiResponse<DashboardTotals>>("/api/dashboard/total-ventes")),
 

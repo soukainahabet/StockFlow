@@ -1,7 +1,6 @@
 import {
   ArrowLeftRight,
   BarChart3,
-  Boxes,
   ChevronsLeft,
   FileText,
   LayoutDashboard,
@@ -13,12 +12,14 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
 import { useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useAuth } from "@/features/auth/AuthContext";
 import { cn } from "@/lib/cn";
+import { landingRouteForRole } from "@/routes/landing";
 import type { Role } from "@/types";
 
 interface NavItem {
@@ -36,7 +37,12 @@ interface NavSection {
 const SECTIONS: NavSection[] = [
   {
     items: [
-      { to: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
+      {
+        to: "/dashboard",
+        label: "Tableau de bord",
+        icon: LayoutDashboard,
+        roles: ["ADMIN", "MANAGER"],
+      },
       {
         to: "/reports",
         label: "Rapports",
@@ -71,7 +77,7 @@ const SECTIONS: NavSection[] = [
         to: "/invoices",
         label: "Factures",
         icon: FileText,
-        roles: ["ADMIN", "SELLER", "MANAGER"],
+        roles: ["ADMIN", "MANAGER"],
       },
     ],
   },
@@ -97,8 +103,9 @@ export function Sidebar({
   collapsed,
   onCollapsedChange,
 }: SidebarProps) {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
   const location = useLocation();
+  const home = landingRouteForRole(user?.role);
 
   // Ferme le drawer mobile lors d'une navigation
   useEffect(() => {
@@ -157,13 +164,8 @@ export function Sidebar({
             "px-4",
           )}
         >
-          <NavLink to="/dashboard" className="flex items-center gap-2.5 min-w-0">
-            <span
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-accent-fg"
-              aria-hidden="true"
-            >
-              <Boxes className="h-4 w-4" strokeWidth={2.25} />
-            </span>
+          <NavLink to={home} className="flex items-center gap-2.5 min-w-0">
+            <Logo size={collapsed ? "sm" : "md"} className="lg:transition-[height,width]" />
             <span
               className={cn(
                 "text-sm font-semibold text-primary tracking-tight truncate",

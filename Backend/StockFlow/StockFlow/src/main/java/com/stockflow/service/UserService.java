@@ -1,5 +1,6 @@
 package com.stockflow.service;
 
+import com.stockflow.dto.request.UserCreateRequest;
 import com.stockflow.dto.request.UserUpdateRequest;
 import com.stockflow.dto.response.PageResponse;
 import com.stockflow.dto.response.UserResponse;
@@ -7,6 +8,7 @@ import com.stockflow.exception.BadRequestException;
 import com.stockflow.exception.DuplicateResourceException;
 import com.stockflow.exception.ResourceNotFoundException;
 import com.stockflow.model.Role;
+import com.stockflow.model.RoleType;
 import com.stockflow.model.User;
 import com.stockflow.repository.RoleRepository;
 import com.stockflow.repository.UserRepository;
@@ -17,15 +19,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Set;
-
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class UserService {
-
-    private static final Set<String> ASSIGNABLE_ROLES =
-            Set.of("ADMIN", "STOCK_MANAGER", "SELLER", "MANAGER");
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -55,6 +52,31 @@ public class UserService {
     }
 
     @Transactional
+    public UserResponse createUser(UserCreateRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new DuplicateResourceException("User", "email", request.getEmail());
+        }
+
+        String roleName = request.getRoleName().toUpperCase();
+        Role role = roleRepository.findByName(roleName)
+                .orElseThrow(() -> new ResourceNotFoundException("Role", "name", roleName));
+        if (role.getType() == RoleType.CUSTOM && !role.isActive()) {
+            throw new BadRequestException(
+                    "Role '" + roleName + "' is inactive and cannot be assigned");
+        }
+
+        User user = User.builder()
+                .name(request.getName())
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .role(role)
+                .build();
+
+        user = userRepository.save(user);
+        return UserResponse.fromEntity(user);
+    }
+
+    @Transactional
     public UserResponse updateUser(Long id, UserUpdateRequest request) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
@@ -76,12 +98,12 @@ public class UserService {
 
         if (request.getRoleName() != null) {
             String roleName = request.getRoleName().toUpperCase();
-            if (!ASSIGNABLE_ROLES.contains(roleName)) {
-                throw new BadRequestException(
-                        "Invalid role '" + roleName + "'. Allowed: " + ASSIGNABLE_ROLES);
-            }
             Role role = roleRepository.findByName(roleName)
                     .orElseThrow(() -> new ResourceNotFoundException("Role", "name", roleName));
+            if (role.getType() == RoleType.CUSTOM && !role.isActive()) {
+                throw new BadRequestException(
+                        "Role '" + roleName + "' is inactive and cannot be assigned");
+            }
             user.setRole(role);
         }
 

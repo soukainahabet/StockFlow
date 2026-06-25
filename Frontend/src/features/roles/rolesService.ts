@@ -4,12 +4,15 @@ import type {
   PageResponse,
   RoleRequest,
   RoleResponse,
+  RoleType,
 } from "@/types";
 
 export interface RoleSearchParams {
   page?: number;
   size?: number;
   sort?: string;
+  type?: RoleType;
+  active?: boolean;
 }
 
 export const rolesService = {
@@ -22,6 +25,12 @@ export const rolesService = {
     const page = await rolesService.list({ page: 0, size: 200 });
     return page.content;
   },
+
+  /** SYSTEM + active CUSTOM, ready for the user-assignment picker. */
+  listAssignable: () =>
+    unwrap<RoleResponse[]>(
+      api.get<ApiResponse<RoleResponse[]>>("/api/roles/assignable"),
+    ),
 
   getById: (id: number) =>
     unwrap<RoleResponse>(api.get<ApiResponse<RoleResponse>>(`/api/roles/${id}`)),

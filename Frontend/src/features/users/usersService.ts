@@ -2,6 +2,7 @@ import { api, unwrap } from "@/services/api";
 import type {
   ApiResponse,
   PageResponse,
+  UserCreateRequest,
   UserResponse,
   UserUpdateRequest,
 } from "@/types";
@@ -21,6 +22,9 @@ export const usersService = {
 
   getById: (id: number) =>
     unwrap<UserResponse>(api.get<ApiResponse<UserResponse>>(`/api/users/${id}`)),
+
+  create: (body: UserCreateRequest) =>
+    unwrap<UserResponse>(api.post<ApiResponse<UserResponse>>("/api/users", body)),
 
   update: (id: number, body: UserUpdateRequest) =>
     unwrap<UserResponse>(api.put<ApiResponse<UserResponse>>(`/api/users/${id}`, body)),

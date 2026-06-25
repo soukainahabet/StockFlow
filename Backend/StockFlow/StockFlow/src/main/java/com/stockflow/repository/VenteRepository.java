@@ -33,6 +33,10 @@ public interface VenteRepository extends JpaRepository<Vente, Long> {
     @EntityGraph(attributePaths = "user")
     List<Vente> findRecentVentes(Pageable pageable);
 
+    @Query("SELECT v FROM Vente v WHERE v.user.id = :userId ORDER BY v.date DESC")
+    @EntityGraph(attributePaths = "user")
+    List<Vente> findRecentVentesByUser(@Param("userId") Long userId, Pageable pageable);
+
     @Query("""
             SELECT v FROM Vente v
             WHERE (:userId IS NULL OR v.user.id = :userId)

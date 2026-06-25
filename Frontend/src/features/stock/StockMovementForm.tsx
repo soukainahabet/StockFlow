@@ -52,6 +52,7 @@ export function StockMovementForm({
     type: defaultType,
     quantity: 1,
     productId: defaultProductId ?? 0,
+    reason: "",
   });
 
   useEffect(() => {
@@ -60,13 +61,18 @@ export function StockMovementForm({
       type: defaultType,
       quantity: 1,
       productId: defaultProductId ?? products[0]?.id ?? 0,
+      reason: "",
     });
   }, [open, defaultProductId, defaultType, products]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!form.productId || form.quantity <= 0) return;
-    void onSubmit(form);
+    const trimmedReason = form.reason?.trim();
+    void onSubmit({
+      ...form,
+      reason: trimmedReason ? trimmedReason : null,
+    });
   };
 
   const selectedProduct = products.find((p) => p.id === form.productId);
@@ -172,6 +178,18 @@ export function StockMovementForm({
                   Quantité supérieure au stock disponible.
                 </p>
               )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="reason">Raison (optionnel)</Label>
+              <Input
+                id="reason"
+                type="text"
+                maxLength={255}
+                placeholder="Ex. Réapprovisionnement, casse, inventaire…"
+                value={form.reason ?? ""}
+                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              />
             </div>
           </DrawerBody>
 

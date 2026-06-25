@@ -3,7 +3,13 @@
     "allow": [
       "Bash(npx tsc *)",
       "Bash(rm \"D:/StockApp/Frontend/tailwind.config.js\")",
-      "Bash(rm \"D:/StockApp/Frontend/src/components/ui/Modal.tsx\")"
+      "Bash(rm \"D:/StockApp/Frontend/src/components/ui/Modal.tsx\")",
+      "Bash(./mvnw -q -DskipTests compile)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(./mvnw -q -DskipTests spring-boot:run)",
+      "Bash(powershell *)",
+      "Bash(curl -s -o login.json -w \"%{http_code}\\\\n\" -X POST \"http://localhost:8080/auth/login\" -H \"Content-Type: application/json\" -d '{\"email\":\"admin@stockflow.com\",\"password\":\"admin123\"}')",
+      "Bash(curl *)"
     ]
   }
 }

@@ -42,8 +42,9 @@ export function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const invoiceId = Number(id);
   const qc = useQueryClient();
-  const { hasRole } = useAuth();
-  const canEdit = hasRole("ADMIN", "SELLER");
+  const { hasRole, hasPermission } = useAuth();
+  const canEdit = hasRole("ADMIN", "MANAGER") || hasPermission("CREATE_INVOICE");
+  const canDownload = hasRole("ADMIN", "MANAGER") || hasPermission("DOWNLOAD_INVOICE");
 
   const invoiceQ = useQuery({
     queryKey: ["invoice", invoiceId],
@@ -169,10 +170,12 @@ export function InvoiceDetailPage() {
                 <Printer className="h-3.5 w-3.5" />
                 Imprimer
               </Button>
-              <Button onClick={handleDownload} loading={downloading}>
-                <Download className="h-3.5 w-3.5" />
-                Télécharger PDF
-              </Button>
+              {canDownload && (
+                <Button onClick={handleDownload} loading={downloading}>
+                  <Download className="h-3.5 w-3.5" />
+                  Télécharger PDF
+                </Button>
+              )}
             </>
           }
         />
@@ -423,7 +426,7 @@ function EditCustomerDrawer({
                   onChange={(e) =>
                     setForm({ ...form, customerEmail: e.target.value })
                   }
-                  placeholder="billing@acme.example"
+                  placeholder="billing@gmail.com"
                 />
               </div>
               <div className="space-y-1.5">
@@ -436,7 +439,7 @@ function EditCustomerDrawer({
                   onChange={(e) =>
                     setForm({ ...form, customerPhone: e.target.value })
                   }
-                  placeholder="+33 1 23 45 67 89"
+                  placeholder="+212 1 23 45 67 89"
                 />
               </div>
             </div>
@@ -450,7 +453,7 @@ function EditCustomerDrawer({
                 onChange={(e) =>
                   setForm({ ...form, customerAddress: e.target.value })
                 }
-                placeholder="10 Rue de la Paix&#10;75002 Paris"
+                placeholder="10 Rue Inbiaat&#10;12000 Temara"
               />
             </div>
             <div className="space-y-1.5">

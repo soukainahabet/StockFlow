@@ -1,0 +1,177 @@
+@startuml
+title StockFlow — Diagramme de classes
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+hide circle
+
+' =========================================================
+' ENUMS
+' =========================================================
+enum RoleType {
+  SYSTEM
+  CUSTOM
+}
+
+enum MovementType {
+  IN
+  OUT
+}
+
+enum NotificationType {
+  STOCK_EXIT
+  NEW_SALE
+  LOW_STOCK
+}
+
+' =========================================================
+' AUTHENTIFICATION & RBAC
+' =========================================================
+package "Authentification & RBAC" <<Rectangle>> {
+
+  class User {
+    +id : Long
+    +name : String
+    +email : String
+    -password : String
+    +login(email, password) : Token
+    +logout()
+    +hasRole(role) : boolean
+    +hasPermission(code) : boolean
+  }
+
+  class Role {
+    +id : Long
+    +name : String
+    +type : RoleType
+    +active : boolean
+    +isSystem() : boolean
+  }
+
+  class Permission {
+    +id : Long
+    +code : String
+    +label : String
+    +category : String
+  }
+}
+
+' =========================================================
+' CATALOGUE PRODUITS
+' =========================================================
+package "Catalogue" <<Rectangle>> {
+
+  class Category {
+    +id : Long
+    +name : String
+  }
+
+  class Product {
+    +id : Long
+    +name : String
+    +barcode : String
+    +price : BigDecimal
+    +buyPrice : BigDecimal
+    +quantity : Integer
+    +alertThreshold : Integer
+    +isLowStock() : boolean
+    +decrementStock(qty)
+    +incrementStock(qty)
+  }
+}
+
+' =========================================================
+' STOCK
+' =========================================================
+package "Stock" <<Rectangle>> {
+
+  class StockMovement {
+    +id : Long
+    +type : MovementType
+    +quantity : Integer
+    +date : LocalDateTime
+    +reason : String
+  }
+}
+
+' =========================================================
+' VENTES & FACTURATION
+' =========================================================
+package "Ventes & Facturation" <<Rectangle>> {
+
+  class Sale {
+    +id : Long
+    +date : LocalDateTime
+    +total : BigDecimal
+    +addLine(line)
+    +computeTotal() : BigDecimal
+  }
+
+  class SaleLine {
+    +id : Long
+    +quantite : Integer
+    +prixUnitaire : BigDecimal
+    +sousTotal() : BigDecimal
+  }
+
+  class Invoice {
+    +id : Long
+    +invoiceNumber : String
+    +issueDate : LocalDateTime
+    +totalAmount : BigDecimal
+    +customerName : String
+    +customerEmail : String
+    +customerAddress : String
+    +customerPhone : String
+    +notes : String
+    +renderPdf() : byte[]
+  }
+}
+
+' =========================================================
+' NOTIFICATIONS
+' =========================================================
+package "Notifications" <<Rectangle>> {
+
+  class Notification {
+    +id : Long
+    +type : NotificationType
+    +title : String
+    +message : String
+    +linkUrl : String
+    +read : boolean
+    +createdAt : LocalDateTime
+    +markAsRead()
+  }
+}
+
+' =========================================================
+' RELATIONS
+' =========================================================
+
+' --- RBAC : un utilisateur a un rôle ; un rôle porte N permissions ---
+User "0..*" --> "1" Role : porte
+Role "0..*" --> "0..*" Permission : accorde
+
+' --- Catalogue ---
+Product "0..*" --> "1" Category : appartient à
+
+' --- Stock : mouvements rattachés au produit (agrégation : historique) ---
+Product "1" o-- "0..*" StockMovement : suit
+StockMovement "0..*" --> "1" User : enregistré par
+
+' --- Ventes : composition forte (les lignes meurent avec la vente) ---
+Sale "1" *-- "1..*" SaleLine : contient
+SaleLine "0..*" --> "1" Product : référence
+Sale "0..*" --> "1" User : par (vendeur)
+
+' --- Facturation : 1-1, générée à la création de la vente ---
+Sale "1" --> "1" Invoice : génère
+
+' --- Notifications : envoyées à un utilisateur ---
+Notification "0..*" --> "1" User : destinataire
+
+@enduml

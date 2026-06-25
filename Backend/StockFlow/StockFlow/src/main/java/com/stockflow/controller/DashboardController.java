@@ -1,6 +1,7 @@
 package com.stockflow.controller;
 
 import com.stockflow.dto.response.ApiResponse;
+import com.stockflow.dto.response.DashboardStatsResponse;
 import com.stockflow.dto.response.ProductResponse;
 import com.stockflow.dto.response.VenteResponse;
 import com.stockflow.service.DashboardService;
@@ -21,11 +22,17 @@ import java.util.Map;
 @RequestMapping("/api/dashboard")
 @RequiredArgsConstructor
 @Validated
-@Tag(name = "Dashboard", description = "Aggregated KPIs and analytics (ADMIN, STOCK_MANAGER, SELLER, MANAGER)")
+@Tag(name = "Dashboard", description = "Aggregated KPIs and analytics (ADMIN, MANAGER)")
 @SecurityRequirement(name = "bearerAuth")
 public class DashboardController {
 
     private final DashboardService dashboardService;
+
+    @GetMapping("/stats")
+    @Operation(summary = "Compact dashboard KPI bundle: rolling revenue windows + low-stock summary")
+    public ResponseEntity<ApiResponse<DashboardStatsResponse>> getStats() {
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getStats()));
+    }
 
     @GetMapping("/total-ventes")
     @Operation(summary = "Sales totals: today / week / month / all time + transaction count")

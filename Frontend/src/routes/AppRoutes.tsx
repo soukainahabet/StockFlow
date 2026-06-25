@@ -14,8 +14,15 @@ import { VenteCreatePage } from "@/features/ventes/VenteCreatePage";
 import { StockMovementsPage } from "@/features/stock/StockMovementsPage";
 import { UsersPage } from "@/features/users/UsersPage";
 import { RolesPage } from "@/features/roles/RolesPage";
+import { useAuth } from "@/features/auth/AuthContext";
 import { PrivateRoute } from "./PrivateRoute";
 import { RoleGuard } from "./RoleGuard";
+import { landingRouteForRole } from "./landing";
+
+function HomeRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={landingRouteForRole(user?.role)} replace />;
+}
 
 export function AppRoutes() {
   return (
@@ -25,13 +32,18 @@ export function AppRoutes() {
 
       <Route element={<PrivateRoute />}>
         <Route element={<DashboardLayout />}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/" element={<HomeRedirect />} />
+          <Route element={<RoleGuard allowed={["ADMIN", "MANAGER"]} />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+          </Route>
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/products/:id" element={<ProductDetailPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
           <Route element={<RoleGuard allowed={["ADMIN", "SELLER", "MANAGER"]} />}>
             <Route path="/ventes" element={<VentesPage />} />
+          </Route>
+          {/* Factures : ADMIN + MANAGER uniquement (SELLER n'a pas accès) */}
+          <Route element={<RoleGuard allowed={["ADMIN", "MANAGER"]} />}>
             <Route path="/invoices" element={<InvoicesPage />} />
             <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
           </Route>
@@ -56,7 +68,7 @@ export function AppRoutes() {
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<HomeRedirect />} />
     </Routes>
   );
 }

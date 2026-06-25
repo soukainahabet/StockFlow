@@ -7,11 +7,17 @@ import com.stockflow.exception.DuplicateResourceException;
 import com.stockflow.exception.ResourceNotFoundException;
 import com.stockflow.model.Category;
 import com.stockflow.model.Product;
+import com.stockflow.model.StockMovementType;
+import com.stockflow.model.User;
 import com.stockflow.repository.CategoryRepository;
 import com.stockflow.repository.ProductRepository;
+import com.stockflow.repository.UserRepository;
+import com.stockflow.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,8 +29,12 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class ProductService {
 
+    private static final String INITIAL_STOCK_REASON = "Initial stock";
+
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final UserRepository userRepository;
+    private final StockMovementService stockMovementService;
 
     public PageResponse<ProductResponse> getAllProducts(Pageable pageable) {
         Page<Product> page = productRepository.findAll(pageable);
@@ -75,18 +85,38 @@ public class ProductService {
             throw new DuplicateResourceException("Product", "barcode", barcode);
         }
 
+        int initialQuantity = request.getQuantity() == null ? 0 : request.getQuantity();
+
         Product product = Product.builder()
                 .name(request.getName())
                 .barcode(barcode)
                 .price(request.getPrice())
                 .buyPrice(request.getBuyPrice())
-                .quantity(request.getQuantity())
+                .quantity(initialQuantity)
                 .alertThreshold(request.getAlertThreshold())
                 .category(category)
                 .build();
 
         product = productRepository.save(product);
+
+        if (initialQuantity > 0) {
+            stockMovementService.recordInternal(
+                    product,
+                    StockMovementType.IN,
+                    initialQuantity,
+                    INITIAL_STOCK_REASON,
+                    getCurrentUser()
+            );
+        }
+
         return ProductResponse.fromEntity(product);
+    }
+
+    private User getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        return userRepository.findById(userDetails.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userDetails.getId()));
     }
 
     public ProductResponse getProductByBarcode(String barcode) {

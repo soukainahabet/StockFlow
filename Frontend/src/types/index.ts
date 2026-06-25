@@ -25,6 +25,26 @@ export interface AuthResponse {
   name: string;
   email: string;
   role: Role;
+  permissions?: string[];
+}
+
+export interface PermissionResponse {
+  id: number;
+  code: string;
+  label: string;
+  category: string;
+}
+
+export type NotificationType = "STOCK_EXIT" | "NEW_SALE" | "LOW_STOCK";
+
+export interface NotificationResponse {
+  id: number;
+  type: NotificationType;
+  title: string;
+  message: string;
+  linkUrl: string | null;
+  read: boolean;
+  createdAt: string;
 }
 
 export interface LoginRequest {
@@ -140,6 +160,7 @@ export interface StockMovementRequest {
   type: StockMovementType;
   quantity: number;
   productId: number;
+  reason?: string | null;
 }
 
 export interface StockMovementResponse {
@@ -147,6 +168,7 @@ export interface StockMovementResponse {
   type: StockMovementType;
   quantity: number;
   date: string;
+  reason: string | null;
   productName: string;
   productId: number;
   userName: string;
@@ -158,6 +180,7 @@ export interface UserResponse {
   name: string;
   email: string;
   role: Role;
+  permissions?: string[];
 }
 
 export interface UserUpdateRequest {
@@ -167,14 +190,29 @@ export interface UserUpdateRequest {
   roleName?: Role;
 }
 
+export interface UserCreateRequest {
+  name: string;
+  email: string;
+  password: string;
+  roleName: Role;
+}
+
+export type RoleType = "SYSTEM" | "CUSTOM";
+
 export interface RoleResponse {
   id: number;
   name: string;
+  type: RoleType;
+  active: boolean;
+  permissions: string[];
+  /** @deprecated use {@link RoleResponse.type} === "SYSTEM" */
   systemRole: boolean;
 }
 
 export interface RoleRequest {
   name: string;
+  active?: boolean;
+  permissions?: string[];
 }
 
 export interface DashboardTotals {
@@ -184,6 +222,14 @@ export interface DashboardTotals {
   total: number;
   count: number;
   [key: string]: number | string;
+}
+
+export interface DashboardStats {
+  todayRevenue: number;
+  last7DaysRevenue: number;
+  last30DaysRevenue: number;
+  lowStockCount: number;
+  lowStockProducts: ProductResponse[];
 }
 
 export interface DashboardSummary {

@@ -77,9 +77,10 @@ public class SecurityConfig {
                                 "/webjars/**"
                         ).permitAll()
 
-                        // --- Users + Roles management: ADMIN only ---
+                        // --- Users + Roles + Permissions management: ADMIN only ---
                         .requestMatchers("/api/users/**").hasRole(ADMIN)
                         .requestMatchers("/api/roles/**").hasRole(ADMIN)
+                        .requestMatchers("/api/permissions/**").hasRole(ADMIN)
 
                         // --- Categories ---
                         .requestMatchers(HttpMethod.GET, "/api/categories/**")
@@ -113,15 +114,18 @@ public class SecurityConfig {
                             .hasAnyRole(ADMIN, SELLER)
                         .requestMatchers(HttpMethod.DELETE, "/api/ventes/**").hasRole(ADMIN)
 
-                        // --- Invoices (auto-generated, customer info edition, PDF export) ---
+                        // --- Invoices (ADMIN, MANAGER) — SELLER is intentionally excluded ---
                         .requestMatchers(HttpMethod.GET, "/api/invoices/**")
-                            .hasAnyRole(ADMIN, SELLER, MANAGER)
+                            .hasAnyRole(ADMIN, MANAGER)
                         .requestMatchers(HttpMethod.PUT, "/api/invoices/**")
-                            .hasAnyRole(ADMIN, SELLER)
+                            .hasAnyRole(ADMIN, MANAGER)
 
-                        // --- Dashboard ---
+                        // --- Notifications: every authenticated user reads their own inbox ---
+                        .requestMatchers("/api/notifications/**").authenticated()
+
+                        // --- Dashboard (KPI supervision) : ADMIN + MANAGER only ---
                         .requestMatchers("/api/dashboard/**")
-                            .hasAnyRole(ADMIN, STOCK_MANAGER, SELLER, MANAGER)
+                            .hasAnyRole(ADMIN, MANAGER)
 
                         // --- Analytics (BI: top-products, profit) : ADMIN + MANAGER only ---
                         .requestMatchers("/api/analytics/**")

@@ -151,6 +151,16 @@ export function StockMovementsPage() {
       hideable: true,
     },
     {
+      id: "reason",
+      header: "Raison",
+      cell: (m) => (
+        <span className="text-secondary">
+          {m.reason ?? <span className="text-disabled">—</span>}
+        </span>
+      ),
+      hideable: true,
+    },
+    {
       id: "quantity",
       header: "Quantité",
       cell: (m) => (

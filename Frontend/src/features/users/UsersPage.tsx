@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2, UserCircle } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -20,20 +20,23 @@ import {
   PageHeader,
   Pagination,
   SearchInput,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   toastUI,
   Tooltip,
   type BadgeProps,
   type Column,
 } from "@/components/ui";
 import { useAuth } from "@/features/auth/AuthContext";
+import { RolePicker } from "@/features/roles/RolePicker";
 import { rolesService } from "@/features/roles/rolesService";
-import type { Role, UserResponse, UserUpdateRequest } from "@/types";
+import type { Role, UserCreateRequest, UserResponse, UserUpdateRequest } from "@/types";
 import { usersService, type UserSearchParams } from "./usersService";
+
+const EMPTY_CREATE: UserCreateRequest = {
+  name: "",
+  email: "",
+  password: "",
+  roleName: "SELLER",
+};
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Administrateur",
@@ -93,13 +96,18 @@ export function UsersPage() {
     queryFn: () => usersService.list(params),
   });
   const rolesQuery = useQuery({
-    queryKey: ["roles", "all"],
-    queryFn: rolesService.listAll,
+    queryKey: ["roles", "assignable"],
+    queryFn: rolesService.listAssignable,
+    // Toujours rafraîchir : un rôle créé dans /roles doit apparaître ici sans rechargement de la page.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const [editing, setEditing] = useState<UserResponse | null>(null);
   const [form, setForm] = useState<UserUpdateRequest>({});
   const [confirmDelete, setConfirmDelete] = useState<UserResponse | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState<UserCreateRequest>(EMPTY_CREATE);
 
   useEffect(() => {
     if (editing) {
@@ -123,6 +131,16 @@ export function UsersPage() {
     },
     onError: () => toastUI.error("Mise à jour impossible"),
   });
+  const createMut = useMutation({
+    mutationFn: (body: UserCreateRequest) => usersService.create(body),
+    onSuccess: () => {
+      toastUI.success("Utilisateur créé");
+      setCreating(false);
+      setCreateForm(EMPTY_CREATE);
+      void qc.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: () => toastUI.error("Création impossible"),
+  });
   const deleteMut = useMutation({
     mutationFn: (id: number) => usersService.remove(id),
     onSuccess: () => {
@@ -143,6 +161,11 @@ export function UsersPage() {
       body.roleName = form.roleName;
     if (form.password) body.password = form.password;
     updateMut.mutate({ id: editing.id, body });
+  };
+
+  const submitCreate = (e: FormEvent) => {
+    e.preventDefault();
+    createMut.mutate(createForm);
   };
 
   const data = usersQuery.data;
@@ -240,6 +263,17 @@ export function UsersPage() {
         title="Utilisateurs"
         description="Gestion des comptes et de leurs rôles."
         meta={total > 0 && <Badge variant="neutral">{total}</Badge>}
+        actions={
+          <Button
+            onClick={() => {
+              setCreateForm(EMPTY_CREATE);
+              setCreating(true);
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Nouvel utilisateur
+          </Button>
+        }
       />
 
       <FilterBar
@@ -308,27 +342,13 @@ export function UsersPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Rôle</Label>
-                <Select
-                  value={form.roleName ?? ""}
-                  onValueChange={(v) =>
-                    setForm({ ...form, roleName: v as Role })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(rolesQuery.data ?? []).map((r) => (
-                      <SelectItem key={r.id} value={r.name}>
-                        <span className="flex items-center gap-2">
-                          <UserCircle className="h-3.5 w-3.5 text-muted" />
-                          {ROLE_LABEL[r.name] ?? r.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="user-role">Rôle</Label>
+                <RolePicker
+                  id="user-role"
+                  value={(form.roleName as Role) ?? ""}
+                  onChange={(v) => setForm({ ...form, roleName: v })}
+                  roles={rolesQuery.data ?? []}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="user-pwd">Nouveau mot de passe</Label>
@@ -354,6 +374,93 @@ export function UsersPage() {
                 variant="secondary"
                 onClick={() => setEditing(null)}
                 disabled={updateMut.isPending}
+              >
+                Annuler
+              </Button>
+            </DrawerFooter>
+          </form>
+        </DrawerContent>
+      </Drawer>
+
+      <Drawer open={creating} onOpenChange={(o) => !o && setCreating(false)}>
+        <DrawerContent size="md">
+          <DrawerHeader>
+            <DrawerTitle>Nouvel utilisateur</DrawerTitle>
+            <DrawerDescription>
+              Créez un compte avec un rôle système ou personnalisé actif.
+            </DrawerDescription>
+          </DrawerHeader>
+          <form onSubmit={submitCreate} className="contents">
+            <DrawerBody className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="create-name" required>
+                  Nom
+                </Label>
+                <Input
+                  id="create-name"
+                  required
+                  minLength={2}
+                  maxLength={100}
+                  value={createForm.name}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, name: e.target.value }))
+                  }
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-email" required>
+                  Email
+                </Label>
+                <Input
+                  id="create-email"
+                  type="email"
+                  required
+                  value={createForm.email}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, email: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-role" required>
+                  Rôle
+                </Label>
+                <RolePicker
+                  id="create-role"
+                  value={createForm.roleName}
+                  onChange={(v) =>
+                    setCreateForm((p) => ({ ...p, roleName: v }))
+                  }
+                  roles={rolesQuery.data ?? []}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="create-pwd" required>
+                  Mot de passe
+                </Label>
+                <Input
+                  id="create-pwd"
+                  type="password"
+                  required
+                  minLength={6}
+                  maxLength={100}
+                  value={createForm.password}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, password: e.target.value }))
+                  }
+                />
+              </div>
+            </DrawerBody>
+            <DrawerFooter>
+              <Button type="submit" loading={createMut.isPending}>
+                Créer
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setCreating(false)}
+                disabled={createMut.isPending}
               >
                 Annuler
               </Button>

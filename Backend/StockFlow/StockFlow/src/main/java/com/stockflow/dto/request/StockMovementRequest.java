@@ -26,4 +26,8 @@ public class StockMovementRequest {
     @NotNull(message = "Product ID is required")
     @Positive(message = "Product ID must be positive")
     private Long productId;
+
+    @Schema(example = "Réapprovisionnement fournisseur", description = "Optional human-readable reason for the movement")
+    @Size(max = 255, message = "Reason must be at most 255 characters")
+    private String reason;
 }

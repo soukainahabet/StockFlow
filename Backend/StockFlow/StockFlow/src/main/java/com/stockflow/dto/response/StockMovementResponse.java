@@ -15,6 +15,7 @@ public class StockMovementResponse {
     private StockMovementType type;
     private Integer quantity;
     private LocalDateTime date;
+    private String reason;
     private String productName;
     private Long productId;
     private String userName;
@@ -26,6 +27,7 @@ public class StockMovementResponse {
                 .type(movement.getType())
                 .quantity(movement.getQuantity())
                 .date(movement.getDate())
+                .reason(movement.getReason())
                 .productName(movement.getProduct().getName())
                 .productId(movement.getProduct().getId())
                 .userName(movement.getUser().getName())

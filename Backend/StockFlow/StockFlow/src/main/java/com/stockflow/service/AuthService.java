@@ -6,11 +6,17 @@ import com.stockflow.dto.response.AuthResponse;
 import com.stockflow.exception.BadRequestException;
 import com.stockflow.exception.DuplicateResourceException;
 import com.stockflow.exception.ResourceNotFoundException;
+import com.stockflow.model.Permission;
 import com.stockflow.model.Role;
+import com.stockflow.model.RoleType;
 import com.stockflow.model.User;
 import com.stockflow.repository.RoleRepository;
 import com.stockflow.repository.UserRepository;
 import com.stockflow.security.JwtUtil;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -29,8 +35,14 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
 
     private static final String DEFAULT_ROLE = "SELLER";
-    private static final java.util.Set<String> ASSIGNABLE_ROLES =
-            java.util.Set.of("ADMIN", "STOCK_MANAGER", "SELLER", "MANAGER");
+
+    /**
+     * Self-service signup is restricted to a small set of system roles.
+     * Privileged roles (ADMIN, USER) and any CUSTOM role must be assigned by an admin
+     * via {@link UserService#updateUser}.
+     */
+    private static final java.util.Set<String> SELF_SERVICE_ROLES =
+            java.util.Set.of("SELLER", "STOCK_MANAGER", "MANAGER");
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -42,13 +54,17 @@ public class AuthService {
                 ? DEFAULT_ROLE
                 : request.getRoleName().toUpperCase();
 
-        if (!ASSIGNABLE_ROLES.contains(roleName)) {
+        if (!SELF_SERVICE_ROLES.contains(roleName)) {
             throw new BadRequestException(
-                    "Invalid role '" + roleName + "'. Allowed: " + ASSIGNABLE_ROLES);
+                    "Role '" + roleName + "' cannot be self-assigned. Allowed: " + SELF_SERVICE_ROLES);
         }
 
         Role role = roleRepository.findByName(roleName)
                 .orElseThrow(() -> new ResourceNotFoundException("Role", "name", roleName));
+        if (role.getType() == RoleType.CUSTOM && !role.isActive()) {
+            throw new BadRequestException(
+                    "Role '" + roleName + "' is inactive and cannot be assigned");
+        }
 
         User user = User.builder()
                 .name(request.getName())
@@ -66,7 +82,8 @@ public class AuthService {
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
-                role.getName()
+                role.getName(),
+                permissionCodes(role)
         );
     }
 
@@ -88,7 +105,17 @@ public class AuthService {
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
-                user.getRole().getName()
+                user.getRole().getName(),
+                permissionCodes(user.getRole())
         );
+    }
+
+    private static Set<String> permissionCodes(Role role) {
+        if (role.getPermissions() == null) {
+            return new HashSet<>();
+        }
+        return role.getPermissions().stream()
+                .map(Permission::getCode)
+                .collect(Collectors.toCollection(HashSet::new));
     }
 }
